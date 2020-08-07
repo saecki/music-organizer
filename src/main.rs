@@ -3,8 +3,8 @@ use std::process::exit;
 use walkdir::WalkDir;
 use std::ffi::{OsStr, OsString};
 use clap::{App, Arg, Shell};
-use std::str::FromStr;
 use std::io::Write;
+use std::str::FromStr;
 
 const MUSIC_FILE_EXTENSIONS: [&str; 5] = [
     "m4a",
@@ -74,21 +74,21 @@ impl Metadata {
 }
 
 fn main() {
-    let app = App::new("playlist localizer")
+    let app = App::new("music localizer")
         .version("0.2.0")
         .author("Saecki")
-        .about("Finds the local paths to your playlists' songs.")
+        .about("Moves and renames Music files using their metadata information.")
         .arg(Arg::with_name("music-dir")
             .short("m")
             .long("music-dir")
-            .help("The directory which will be searched for playlists and music files")
+            .help("The directory which will be searched for music files")
             .takes_value(true)
             .required_unless("generate-completion")
             .conflicts_with("generate-completion"))
         .arg(Arg::with_name("output-dir")
             .short("o")
             .long("output-dir")
-            .help("The directory which the playlists will be written to")
+            .help("The directory which the content will be written to")
             .takes_value(true)
             .required(true))
         .arg(Arg::with_name("copy")
@@ -108,32 +108,31 @@ fn main() {
             .help("Generates a completion script for the specified shell")
             .conflicts_with("music-dir")
             .takes_value(true)
-            .possible_values(&Shell::variants())
+            .possible_values(&["bash", "zsh", "fish", "elvish", "powershell"])
         );
 
     let matches = app.clone().get_matches();
     let output_dir = PathBuf::from(matches.value_of("output-dir").unwrap());
     let generate_completion = matches.value_of("generate-completion").unwrap_or("");
 
-    let abs_output_dir = match PathBuf::from(&output_dir).canonicalize() {
-        Ok(t) => t,
-        Err(e) => {
-            println!("not a valid output dir path: {}\n{:?}", output_dir.display(), e);
-            exit(1)
+    if !output_dir.exists() {
+        match std::fs::create_dir_all(&output_dir) {
+            Ok(_) => println!("created dir: {}", output_dir.display()),
+            Err(e) => println!("error creating dir: {}\n{}", output_dir.display(), e),
         }
-    };
+    }
 
     if generate_completion != "" {
         println!("generating completions...");
         let shell = Shell::from_str(generate_completion).unwrap();
-        app.clone().gen_completions("playlist_localizer", shell, abs_output_dir);
+        app.clone().gen_completions("playlist_localizer", shell, output_dir);
         println!("done");
         exit(0);
     }
 
     let music_dir = PathBuf::from(matches.value_of("music-dir").unwrap());
     let copy = matches.is_present("copy");
-    let yes = matches.is_present("copy");
+    let yes = matches.is_present("assume-yes");
 
     let abs_music_dir = match PathBuf::from(&music_dir).canonicalize() {
         Ok(t) => t,
@@ -171,7 +170,7 @@ fn main() {
             current_file: p,
         });
 
-        print!("\rsong {}           ", song_index);
+        print!("\rsong {}           ", song_index + 1);
         let _ = std::io::stdout().flush().is_ok();
 
         if m.artist.is_empty() {
@@ -216,15 +215,15 @@ fn main() {
             }],
         });
     }
-    println!();
 
     if !yes {
         loop {
-            println!(
-                "{} files will be {}. Continue [y/N]?",
+            print!(
+                "\n{} files will be {}. Continue [y/N]?",
                 songs.len(),
                 if copy { "copied" } else { "moved" }
             );
+            let _ = std::io::stdout().flush().is_ok();
 
             let mut input = String::with_capacity(2);
             if let Err(e) = std::io::stdin().read_line(&mut input) {
@@ -239,10 +238,10 @@ fn main() {
     }
 
     println!("\nwriting...");
-    let mut counter: usize = 0;
+    let mut counter: usize = 1;
     for ar in &artists {
-        let ar_osstr = OsString::from(&ar.name);
-        let ar_dir = output_dir.clone().join(&ar.name);
+        let ar_os_str = valid_os_string(&ar.name);
+        let ar_dir = output_dir.clone().join(&ar_os_str);
         if !ar_dir.exists() {
             if let Err(e) = std::fs::create_dir(&ar_dir) {
                 println!("error creating dir: {}:\n{}", ar_dir.display(), e);
@@ -250,8 +249,8 @@ fn main() {
         }
 
         for al in &ar.albums {
-            let al_osstr = OsString::from(&al.name);
-            let al_dir = ar_dir.clone().join(&al_osstr);
+            let al_os_str = valid_os_string(&al.name);
+            let al_dir = ar_dir.clone().join(&al_os_str);
             if !al_dir.exists() {
                 if let Err(e) = std::fs::create_dir(&al_dir) {
                     println!("error creating dir: {}:\n{}", al_dir.display(), e);
@@ -263,11 +262,11 @@ fn main() {
                 let extension = song.current_file.extension().unwrap();
 
                 if al.name.is_empty() {
-                    let mut file_name = OsString::with_capacity(4 + ar_osstr.len() + song.title.len() + extension.len());
+                    let mut file_name = OsString::with_capacity(4 + ar_os_str.len() + song.title.len() + extension.len());
 
-                    file_name.push(&ar_osstr);
+                    file_name.push(&ar_os_str);
                     file_name.push(" - ");
-                    file_name.push(&song.title);
+                    file_name.push(valid_os_string(&song.title));
                     file_name.push(".");
                     file_name.push(extension);
 
@@ -275,12 +274,12 @@ fn main() {
 
                     mv_or_cp(&counter, &song.current_file, &new_file, copy);
                 } else {
-                    let mut file_name = OsString::with_capacity(9 + ar_osstr.len() + song.title.len() + extension.len());
+                    let mut file_name = OsString::with_capacity(9 + ar_os_str.len() + song.title.len() + extension.len());
 
                     file_name.push(format!("{:02} - ", song.track));
-                    file_name.push(&ar_osstr);
+                    file_name.push(&ar_os_str);
                     file_name.push(" - ");
-                    file_name.push(&song.title);
+                    file_name.push(valid_os_string(&song.title));
                     file_name.push(".");
                     file_name.push(extension);
 
@@ -338,4 +337,10 @@ fn mv_or_cp(song_index: &usize, old: &PathBuf, new: &PathBuf, copy: bool) {
             println!("\nerror{}", e);
         }
     }
+}
+
+fn valid_os_string(str: &str) -> OsString {
+    let s = str.replace('/', "");
+
+    OsString::from(s)
 }
