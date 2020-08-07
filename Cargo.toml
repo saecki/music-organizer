@@ -1,0 +1,11 @@
+[package]
+name = "music_organizer"
+version = "0.1.0"
+authors = ["Saecki <tobiasschmitz2001@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+walkdir = "2.3.1"
+id3 = "0.5.1"
+mp4ameta = "0.3.0"
+clap = "2.33.2"
