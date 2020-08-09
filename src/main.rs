@@ -74,8 +74,8 @@ impl Metadata {
 }
 
 fn main() {
-    let app = App::new("music localizer")
-        .version("0.2.0")
+    let app = App::new("music organizer")
+        .version("0.1.0")
         .author("Saecki")
         .about("Moves and renames Music files using their metadata information.")
         .arg(Arg::with_name("music-dir")
