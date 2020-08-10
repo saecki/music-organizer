@@ -1,10 +1,11 @@
+use std::ffi::{OsStr, OsString};
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::exit;
-use walkdir::WalkDir;
-use std::ffi::{OsStr, OsString};
-use clap::{App, Arg, Shell};
-use std::io::Write;
 use std::str::FromStr;
+
+use clap::{App, Arg, Shell};
+use walkdir::WalkDir;
 
 const MUSIC_FILE_EXTENSIONS: [&str; 5] = [
     "m4a",
@@ -31,6 +32,7 @@ pub struct Album {
 #[derive(Default, Debug, PartialEq)]
 pub struct Song {
     pub track: u16,
+    pub artist: String,
     pub title: String,
     pub current_file: PathBuf,
 }
@@ -39,6 +41,7 @@ pub struct Song {
 pub struct Metadata {
     pub track: u16,
     pub artist: String,
+    pub album_artist: String,
     pub album: String,
     pub title: String,
 }
@@ -51,14 +54,11 @@ impl Metadata {
                     Some(t) => t as u16,
                     None => 0,
                 };
-                let artist = match tag.album_artist() {
-                    Some(s) => s.to_string(),
-                    None => tag.artist().unwrap_or("").to_string(),
-                };
 
                 return Self {
                     track,
-                    artist,
+                    artist: tag.artist().unwrap_or("").to_string(),
+                    album_artist: tag.album_artist().unwrap_or("").to_string(),
                     title: tag.title().unwrap_or("").to_string(),
                     album: tag.album().unwrap_or("").to_string(),
                 };
@@ -68,14 +68,11 @@ impl Metadata {
                     Some((t, _)) => t as u16,
                     None => 0,
                 };
-                let artist = match tag.album_artist() {
-                    Some(s) => s.to_string(),
-                    None => tag.artist().unwrap_or("").to_string(),
-                };
 
                 return Self {
                     track,
-                    artist,
+                    artist: tag.artist().unwrap_or("").to_string(),
+                    album_artist: tag.album_artist().unwrap_or("").to_string(),
                     title: tag.title().unwrap_or("").to_string(),
                     album: tag.album().unwrap_or("").to_string(),
                 };
@@ -115,6 +112,11 @@ fn main() {
             .long("assume-yes")
             .help("Assumes yes as a answer for all questions")
             .takes_value(false))
+        .arg(Arg::with_name("verbose")
+            .short("v")
+            .long("verbose")
+            .help("Verbose output")
+            .takes_value(false))
         .arg(Arg::with_name("generate-completion")
             .short("g")
             .long("generate-completion")
@@ -141,7 +143,7 @@ fn main() {
 
         println!("generating completions...");
         let shell = Shell::from_str(generate_completion).unwrap();
-        app.clone().gen_completions("playlist_localizer", shell, output_dir);
+        app.clone().gen_completions("music_organizer", shell, output_dir);
         println!("done");
         exit(0);
     }
@@ -149,6 +151,7 @@ fn main() {
     let music_dir = PathBuf::from(matches.value_of("music-dir").unwrap());
     let copy = matches.is_present("copy");
     let yes = matches.is_present("assume-yes");
+    let verbose = matches.is_present("verbose");
 
     let output_dir = match matches.value_of("output-dir") {
         Some(s) => PathBuf::from(s),
@@ -192,23 +195,30 @@ fn main() {
 
         let m = Metadata::read_from(&p);
         let song_index = songs.len();
+
+        print(&format!("{} {} - {}", song_index + 1, &m.artist, &m.title), verbose);
+
         songs.push(Song {
             track: m.track,
+            artist: m.artist.clone(),
             title: m.title,
             current_file: p,
         });
 
-        overwrite_last_line(&format!("\rsong {}", song_index + 1));
         let _ = std::io::stdout().flush().is_ok();
 
-        if m.artist.is_empty() {
+        let artist = if !m.album_artist.is_empty() {
+            m.album_artist
+        } else if !m.artist.is_empty() {
+            m.artist.clone()
+        } else {
             unknown.push(song_index);
             continue;
-        }
+        };
 
         if artists.is_empty() {
             artists.push(Artist {
-                name: m.artist,
+                name: artist,
                 albums: vec![Album {
                     name: m.album,
                     songs: vec![song_index],
@@ -304,7 +314,7 @@ fn main() {
 
                     let new_file = ar_dir.join(file_name);
 
-                    mv_or_cp(&counter, &song.current_file, &new_file, copy);
+                    mv_or_cp(&counter, &song.current_file, &new_file, copy, verbose);
                 } else {
                     let mut file_name = OsString::with_capacity(9 + ar_os_str.len() + song.title.len() + extension.len());
 
@@ -317,7 +327,7 @@ fn main() {
 
                     let new_file = al_dir.join(file_name);
 
-                    mv_or_cp(&counter, &song.current_file, &new_file, copy);
+                    mv_or_cp(&counter, &song.current_file, &new_file, copy, verbose);
                 }
                 counter += 1;
             }
@@ -335,7 +345,7 @@ fn main() {
             let song = &songs[*si];
             let new_file = unknown_dir.join(song.current_file.file_name().unwrap());
 
-            mv_or_cp(&counter, &song.current_file, &new_file, copy);
+            mv_or_cp(&counter, &song.current_file, &new_file, copy, verbose);
             counter += 1;
         }
         println!();
@@ -355,15 +365,17 @@ fn is_music_extension(s: &OsStr) -> bool {
     false
 }
 
-fn mv_or_cp(song_index: &usize, old: &PathBuf, new: &PathBuf, copy: bool) {
-    if copy {
-        overwrite_last_line(&format!("copying {} {}", song_index, new.display()));
+fn mv_or_cp(song_index: &usize, old: &PathBuf, new: &PathBuf, copy: bool, verbose: bool) {
+    if old == new {
+        print(&format!("skipping {} {}", song_index, new.display()), verbose);
+    } else if copy {
+        print(&format!("copying {} {}", song_index, new.display()), verbose);
         let _ = std::io::stdout().flush().is_ok();
         if let Err(e) = std::fs::copy(old, new) {
             println!("\nerror: {}", e);
         }
     } else {
-        overwrite_last_line(&format!("moving {} {}", song_index, new.display()));
+        print(&format!("moving {} {}", song_index, new.display()), verbose);
         let _ = std::io::stdout().flush().is_ok();
         if let Err(e) = std::fs::rename(old, new) {
             println!("\nerror: {}", e);
@@ -372,18 +384,22 @@ fn mv_or_cp(song_index: &usize, old: &PathBuf, new: &PathBuf, copy: bool) {
 }
 
 #[inline]
-fn overwrite_last_line(str: &str) {
-    let len = str.chars().count();
-    let diff = unsafe { LAST_LEN as i32 - len as i32 };
+fn print(str: &str, verbose: bool) {
+    if verbose {
+        println!("{}", str);
+    } else {
+        let len = str.chars().count();
+        let diff = unsafe { LAST_LEN as i32 - len as i32 };
 
-    print!("\r{}", str);
-    for _ in 0..diff {
-        print!(" ");
-    }
-    let _ = std::io::stdout().flush().is_ok();
+        print!("\r{}", str);
+        for _ in 0..diff {
+            print!(" ");
+        }
+        let _ = std::io::stdout().flush().is_ok();
 
-    unsafe {
-        LAST_LEN = len;
+        unsafe {
+            LAST_LEN = len;
+        }
     }
 }
 
