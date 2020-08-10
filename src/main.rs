@@ -14,6 +14,8 @@ const MUSIC_FILE_EXTENSIONS: [&str; 5] = [
     "m4v",
 ];
 
+static mut LAST_LEN: usize = 0;
+
 #[derive(Debug, PartialEq)]
 pub struct Artist {
     pub name: String,
@@ -43,33 +45,45 @@ pub struct Metadata {
 
 impl Metadata {
     pub fn read_from(path: &PathBuf) -> Self {
-        if let Ok(tag) = id3::Tag::read_from_path(&path) {
-            let track = match tag.track() {
-                Some(t) => t as u16,
-                None => 0,
-            };
+        match path.extension().unwrap().to_str().unwrap() {
+            "mp3" => if let Ok(tag) = id3::Tag::read_from_path(&path) {
+                let track = match tag.track() {
+                    Some(t) => t as u16,
+                    None => 0,
+                };
+                let artist = match tag.album_artist() {
+                    Some(s) => s.to_string(),
+                    None => tag.artist().unwrap_or("").to_string(),
+                };
 
-            Self {
-                track,
-                title: tag.title().unwrap_or("").to_string(),
-                artist: tag.artist().unwrap_or("").to_string(),
-                album: tag.album().unwrap_or("").to_string(),
-            }
-        } else if let Ok(tag) = mp4ameta::Tag::read_from_path(&path) {
-            let track = match tag.track_number() {
-                Some((t, _)) => t as u16,
-                None => 0,
-            };
+                return Self {
+                    track,
+                    artist,
+                    title: tag.title().unwrap_or("").to_string(),
+                    album: tag.album().unwrap_or("").to_string(),
+                };
+            } else {},
+            "m4a" | "m4b" | "m4p" | "m4v" => if let Ok(tag) = mp4ameta::Tag::read_from_path(&path) {
+                let track = match tag.track_number() {
+                    Some((t, _)) => t as u16,
+                    None => 0,
+                };
+                let artist = match tag.album_artist() {
+                    Some(s) => s.to_string(),
+                    None => tag.artist().unwrap_or("").to_string(),
+                };
 
-            Self {
-                track,
-                title: tag.title().unwrap_or("").to_string(),
-                artist: tag.artist().unwrap_or("").to_string(),
-                album: tag.album().unwrap_or("").to_string(),
-            }
-        } else {
-            Self::default()
+                return Self {
+                    track,
+                    artist,
+                    title: tag.title().unwrap_or("").to_string(),
+                    album: tag.album().unwrap_or("").to_string(),
+                };
+            },
+            _ => (),
         }
+
+        Self::default()
     }
 }
 
@@ -77,7 +91,7 @@ fn main() {
     let app = App::new("music organizer")
         .version("0.1.0")
         .author("Saecki")
-        .about("Moves and renames Music files using their metadata information.")
+        .about("Moves or copies and renames Music files using their metadata information.")
         .arg(Arg::with_name("music-dir")
             .short("m")
             .long("music-dir")
@@ -89,12 +103,12 @@ fn main() {
             .short("o")
             .long("output-dir")
             .help("The directory which the content will be written to")
-            .takes_value(true)
-            .required(true))
+            .takes_value(true))
         .arg(Arg::with_name("copy")
             .short("c")
             .long("copy")
             .help("Copy the files instead of moving")
+            .requires("output-dir")
             .takes_value(false))
         .arg(Arg::with_name("assume-yes")
             .short("y")
@@ -107,22 +121,24 @@ fn main() {
             .value_name("shell")
             .help("Generates a completion script for the specified shell")
             .conflicts_with("music-dir")
+            .requires("output-dir")
             .takes_value(true)
             .possible_values(&["bash", "zsh", "fish", "elvish", "powershell"])
         );
 
     let matches = app.clone().get_matches();
-    let output_dir = PathBuf::from(matches.value_of("output-dir").unwrap());
     let generate_completion = matches.value_of("generate-completion").unwrap_or("");
 
-    if !output_dir.exists() {
-        match std::fs::create_dir_all(&output_dir) {
-            Ok(_) => println!("created dir: {}", output_dir.display()),
-            Err(e) => println!("error creating dir: {}\n{}", output_dir.display(), e),
-        }
-    }
 
     if generate_completion != "" {
+        let output_dir = PathBuf::from(matches.value_of("output-dir").unwrap());
+        if !output_dir.exists() {
+            match std::fs::create_dir_all(&output_dir) {
+                Ok(_) => println!("created dir: {}", output_dir.display()),
+                Err(e) => println!("error creating dir: {}\n{}", output_dir.display(), e),
+            }
+        }
+
         println!("generating completions...");
         let shell = Shell::from_str(generate_completion).unwrap();
         app.clone().gen_completions("playlist_localizer", shell, output_dir);
@@ -133,6 +149,18 @@ fn main() {
     let music_dir = PathBuf::from(matches.value_of("music-dir").unwrap());
     let copy = matches.is_present("copy");
     let yes = matches.is_present("assume-yes");
+
+    let output_dir = match matches.value_of("output-dir") {
+        Some(s) => PathBuf::from(s),
+        None => music_dir.clone(),
+    };
+
+    if !output_dir.exists() {
+        match std::fs::create_dir_all(&output_dir) {
+            Ok(_) => println!("created dir: {}", output_dir.display()),
+            Err(e) => println!("error creating dir: {}\n{}", output_dir.display(), e),
+        }
+    }
 
     let abs_music_dir = match PathBuf::from(&music_dir).canonicalize() {
         Ok(t) => t,
@@ -170,7 +198,7 @@ fn main() {
             current_file: p,
         });
 
-        print!("\rsong {}           ", song_index + 1);
+        overwrite_last_line(&format!("\rsong {}", song_index + 1));
         let _ = std::io::stdout().flush().is_ok();
 
         if m.artist.is_empty() {
@@ -235,6 +263,10 @@ fn main() {
                 exit(1);
             }
         }
+    }
+
+    unsafe {
+        LAST_LEN = 0;
     }
 
     println!("\nwriting...");
@@ -325,22 +357,50 @@ fn is_music_extension(s: &OsStr) -> bool {
 
 fn mv_or_cp(song_index: &usize, old: &PathBuf, new: &PathBuf, copy: bool) {
     if copy {
-        print!("\rcopying {} {}           ", song_index, new.display());
+        overwrite_last_line(&format!("copying {} {}", song_index, new.display()));
         let _ = std::io::stdout().flush().is_ok();
         if let Err(e) = std::fs::copy(old, new) {
-            println!("\nerror{}", e);
+            println!("\nerror: {}", e);
         }
     } else {
-        print!("\rmoving {} {}           ", song_index, new.display());
+        overwrite_last_line(&format!("moving {} {}", song_index, new.display()));
         let _ = std::io::stdout().flush().is_ok();
         if let Err(e) = std::fs::rename(old, new) {
-            println!("\nerror{}", e);
+            println!("\nerror: {}", e);
         }
     }
 }
 
+#[inline]
+fn overwrite_last_line(str: &str) {
+    let len = str.chars().count();
+    let diff = unsafe { LAST_LEN as i32 - len as i32 };
+
+    print!("\r{}", str);
+    for _ in 0..diff {
+        print!(" ");
+    }
+    let _ = std::io::stdout().flush().is_ok();
+
+    unsafe {
+        LAST_LEN = len;
+    }
+}
+
+lazy_static::lazy_static! {
+    static ref RE: regex::Regex = regex::Regex::new(r#"[<>:"/\|?*]"#).unwrap();
+}
+
 fn valid_os_string(str: &str) -> OsString {
-    let s = str.replace('/', "");
+    let mut s = RE.replace_all(str, "").to_string();
+
+    if s.starts_with('.') {
+        s.replace_range(0..1, "_")
+    }
+
+    if s.ends_with('.') {
+        s.replace_range(s.len() - 1..s.len(), "_")
+    }
 
     OsString::from(s)
 }
