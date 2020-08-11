@@ -310,8 +310,7 @@ fn main() {
     println!("\nwriting...");
     let mut counter: usize = 1;
     for ar in &artists {
-        let ar_os_str = valid_os_string(&ar.name);
-        let ar_dir = output_dir.clone().join(&ar_os_str);
+        let ar_dir = output_dir.clone().join(valid_os_string(&ar.name));
         if !ar_dir.exists() {
             if let Err(e) = std::fs::create_dir(&ar_dir) {
                 println!("error creating dir: {}:\n{}", ar_dir.display(), e);
@@ -319,8 +318,7 @@ fn main() {
         }
 
         for al in &ar.albums {
-            let al_os_str = valid_os_string(&al.name);
-            let al_dir = ar_dir.clone().join(&al_os_str);
+            let al_dir = ar_dir.clone().join(valid_os_string(&al.name));
             if !al_dir.exists() {
                 if let Err(e) = std::fs::create_dir(&al_dir) {
                     println!("error creating dir: {}:\n{}", al_dir.display(), e);
@@ -331,10 +329,10 @@ fn main() {
                 let song = &songs[*si];
                 let extension = song.current_file.extension().unwrap();
 
-                if al.name.is_empty() {
-                    let mut file_name = OsString::with_capacity(4 + ar_os_str.len() + song.title.len() + extension.len());
+                if al.name.is_empty() || al.name.to_ascii_lowercase() == format!("{} - single", &song.title.to_ascii_lowercase()) {
+                    let mut file_name = OsString::with_capacity(4 + song.artist.len() + song.title.len() + extension.len());
 
-                    file_name.push(&ar_os_str);
+                    file_name.push(valid_os_string(&song.artist));
                     file_name.push(" - ");
                     file_name.push(valid_os_string(&song.title));
                     file_name.push(".");
@@ -344,10 +342,10 @@ fn main() {
 
                     mv_or_cp(&counter, &song.current_file, &new_file, copy, verbose);
                 } else {
-                    let mut file_name = OsString::with_capacity(9 + ar_os_str.len() + song.title.len() + extension.len());
+                    let mut file_name = OsString::with_capacity(9 + song.artist.len() + song.title.len() + extension.len());
 
                     file_name.push(format!("{:02} - ", song.track));
-                    file_name.push(&ar_os_str);
+                    file_name.push(valid_os_string(&song.artist));
                     file_name.push(" - ");
                     file_name.push(valid_os_string(&song.title));
                     file_name.push(".");
