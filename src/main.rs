@@ -185,10 +185,7 @@ fn main() {
             .unwrap_or(false)
         )
         .filter_map(|e| e.ok())
-        .filter(|e| match e.metadata() {
-            Ok(m) => m.is_file(),
-            Err(_e) => false,
-        })
+        .filter(|e| e.metadata().map(|m| m.is_file()).unwrap_or(false))
     {
         let p = d.into_path();
         if !is_music_extension(p.extension().unwrap()) { continue; }
@@ -196,7 +193,7 @@ fn main() {
         let m = Metadata::read_from(&p);
         let song_index = songs.len();
 
-        print(&format!("{} {} - {}", song_index + 1, &m.artist, &m.title), verbose);
+        print_verbose(&format!("{} {} - {}", song_index + 1, &m.artist, &m.title), verbose);
 
         songs.push(Song {
             track: m.track,
@@ -210,7 +207,7 @@ fn main() {
         let artist = if !m.album_artist.is_empty() {
             m.album_artist
         } else if !m.artist.is_empty() {
-            m.artist.clone()
+            m.artist
         } else {
             unknown.push(song_index);
             continue;
@@ -229,7 +226,7 @@ fn main() {
         }
 
         for ar in &mut artists {
-            if ar.name == m.artist {
+            if ar.name == artist {
                 for al in &mut ar.albums {
                     if al.name == m.album {
                         al.songs.push(song_index);
@@ -246,7 +243,7 @@ fn main() {
         }
 
         artists.push(Artist {
-            name: m.artist,
+            name: artist,
             albums: vec![Album {
                 name: m.album,
                 songs: vec![song_index],
@@ -254,24 +251,55 @@ fn main() {
         });
     }
 
-    if !yes {
-        loop {
-            print!(
-                "\n{} files will be {}. Continue [y/N]?",
-                songs.len(),
-                if copy { "copied" } else { "moved" }
-            );
-            let _ = std::io::stdout().flush().is_ok();
+    println!("\nchecking songs");
 
-            let mut input = String::with_capacity(2);
-            if let Err(e) = std::io::stdin().read_line(&mut input) {
-                println!("error: {}", e);
-            } else if input.to_lowercase() == "y\n" {
-                break;
-            } else if input.to_lowercase() == "n\n" {
-                println!("exiting...");
-                exit(1);
+    for (i, ar1) in artists.iter().enumerate() {
+        for (j, ar2) in artists.iter().enumerate() {
+            if i != j && ar1.name.eq_ignore_ascii_case(&ar2.name) {
+                println!("These two artists are named similarly:\n{}\n{}", &ar1.name, &ar2.name);
+                let index = input_options_loop(&[
+                    "don't do anything",
+                    "merge using first",
+                    "merge using second",
+                    "enter new name"
+                ]);
+
+                match index {
+                    0 => continue,
+                    1 => println!("update first"),
+                    2 => println!("update second"),
+                    3 => loop {
+                        let new_name = input_loop("enter new name:", |_| true);
+                        println!("new name: '{}'", new_name);
+
+                        let index = input_options_loop(&[
+                            "ok",
+                            "reenter name",
+                            "dismiss",
+                        ]);
+
+                        match index {
+                            0 => println!("rename"),
+                            1 => continue,
+                            _ => break,
+                        }
+                    }
+                    _ => continue,
+                }
             }
+        }
+    }
+
+    if !yes {
+        let ok = input_confirmation_loop(&format!(
+            "{} files will be {}. Continue",
+            songs.len(),
+            if copy { "copied" } else { "moved" })
+        );
+
+        if !ok {
+            println!("exiting...");
+            exit(1);
         }
     }
 
@@ -367,15 +395,15 @@ fn is_music_extension(s: &OsStr) -> bool {
 
 fn mv_or_cp(song_index: &usize, old: &PathBuf, new: &PathBuf, copy: bool, verbose: bool) {
     if old == new {
-        print(&format!("skipping {} {}", song_index, new.display()), verbose);
+        print_verbose(&format!("skipping {} {}", song_index, new.display()), verbose);
     } else if copy {
-        print(&format!("copying {} {}", song_index, new.display()), verbose);
+        print_verbose(&format!("copying {} {}", song_index, new.display()), verbose);
         let _ = std::io::stdout().flush().is_ok();
         if let Err(e) = std::fs::copy(old, new) {
             println!("\nerror: {}", e);
         }
     } else {
-        print(&format!("moving {} {}", song_index, new.display()), verbose);
+        print_verbose(&format!("moving {} {}", song_index, new.display()), verbose);
         let _ = std::io::stdout().flush().is_ok();
         if let Err(e) = std::fs::rename(old, new) {
             println!("\nerror: {}", e);
@@ -383,8 +411,66 @@ fn mv_or_cp(song_index: &usize, old: &PathBuf, new: &PathBuf, copy: bool, verbos
     }
 }
 
+fn input_loop(str: &str, predicate: fn(&str) -> bool) -> String {
+    let mut input = String::with_capacity(10);
+
+    loop {
+        println!("{}", str);
+
+        match std::io::stdin().read_line(&mut input) {
+            Ok(_) => if predicate(&input) { return input; },
+            Err(e) => println!("error:\n {}", e),
+        }
+    }
+}
+
+fn input_options_loop(options: &[&str]) -> usize {
+    let mut input = String::with_capacity(2);
+
+    loop {
+        for (i, s) in options.iter().enumerate() {
+            println!("[{}] {}", i, s);
+        }
+
+        match std::io::stdin().read_line(&mut input) {
+            Ok(_) => match usize::from_str(input.trim_matches('\n')) {
+                Ok(i) => if i < options.len() {
+                    return i;
+                } else {
+                    println!("invalid input")
+                },
+                Err(_) => println!("invalid input"),
+            }
+            Err(e) => println!("error:\n {}", e),
+        }
+    }
+}
+
+fn input_confirmation_loop(str: &str) -> bool {
+    let mut input = String::with_capacity(2);
+
+    loop {
+        print!("{} [y/N]?", str);
+        let _ = std::io::stdout().flush().is_ok();
+
+        if let Err(e) = std::io::stdin().read_line(&mut input) {
+            println!("error:\n {}", e);
+        } else {
+            input.make_ascii_lowercase();
+
+            if input == "\n" || input == "y\n" {
+                return true;
+            } else if input == "n\n" {
+                return false;
+            } else {
+                println!("invalid input");
+            }
+        }
+    }
+}
+
 #[inline]
-fn print(str: &str, verbose: bool) {
+fn print_verbose(str: &str, verbose: bool) {
     if verbose {
         println!("{}", str);
     } else {
