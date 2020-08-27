@@ -310,7 +310,7 @@ fn main() {
     println!("\nwriting...");
     let mut counter: usize = 1;
     for ar in &artists {
-        let ar_dir = output_dir.clone().join(valid_os_string(&ar.name));
+        let ar_dir = output_dir.join(valid_os_string(&ar.name));
         if !ar_dir.exists() {
             if let Err(e) = std::fs::create_dir(&ar_dir) {
                 println!("error creating dir: {}:\n{}", ar_dir.display(), e);
@@ -318,7 +318,7 @@ fn main() {
         }
 
         for al in &ar.albums {
-            let al_dir = ar_dir.clone().join(valid_os_string(&al.name));
+            let al_dir = ar_dir.join(valid_os_string(&al.name));
             if !al_dir.exists() {
                 if let Err(e) = std::fs::create_dir(&al_dir) {
                     println!("error creating dir: {}:\n{}", al_dir.display(), e);
@@ -495,11 +495,11 @@ fn valid_os_string(str: &str) -> OsString {
     let mut s = RE.replace_all(str, "").to_string();
 
     if s.starts_with('.') {
-        s.replace_range(0..1, "_")
+        s.replace_range(0..1, "_");
     }
 
     if s.ends_with('.') {
-        s.replace_range(s.len() - 1..s.len(), "_")
+        s.replace_range(s.len() - 1..s.len(), "_");
     }
 
     OsString::from(s)
