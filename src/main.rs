@@ -253,21 +253,22 @@ fn main() {
 
     println!("\nchecking songs");
 
-    for (i, ar1) in artists.iter().enumerate() {
-        for (j, ar2) in artists.iter().enumerate() {
+    let mut offset = 1;
+    for ar1 in artists.iter() {
+        for ar2 in artists.iter().skip(offset) {
             if i != j && ar1.name.eq_ignore_ascii_case(&ar2.name) {
                 println!("These two artists are named similarly:\n{}\n{}", &ar1.name, &ar2.name);
                 let index = input_options_loop(&[
                     "don't do anything",
                     "merge using first",
                     "merge using second",
-                    "enter new name"
+                    "enter new name",
                 ]);
 
                 match index {
                     0 => continue,
-                    1 => println!("update first"),
-                    2 => println!("update second"),
+                    1 => println!("merging using first"),
+                    2 => println!("merging using second"),
                     3 => loop {
                         let new_name = input_loop("enter new name:", |_| true);
                         println!("new name: '{}'", new_name);
@@ -279,7 +280,10 @@ fn main() {
                         ]);
 
                         match index {
-                            0 => println!("rename"),
+                            0 => {
+                                //TODO: rename
+                                break;
+                            }
                             1 => continue,
                             _ => break,
                         }
@@ -288,6 +292,7 @@ fn main() {
                 }
             }
         }
+        offset += 1;
     }
 
     if !yes {
