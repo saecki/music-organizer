@@ -76,8 +76,8 @@ impl Metadata {
             } else {},
             "m4a" | "m4b" | "m4p" | "m4v" => if let Ok(tag) = mp4ameta::Tag::read_from_path(&path) {
                 let track = match tag.track_number() {
-                    Some((t, _)) => t as u16,
-                    None => 0,
+                    (Some(t), _) => t as u16,
+                    (None, _) => 0,
                 };
 
                 return Self {
