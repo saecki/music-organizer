@@ -1,5 +1,5 @@
 use clap::{App, Arg, Shell};
-use music_organizer::{Changes, MusicIndex, ReadMusicIndexIter, Song};
+use music_organizer::{Changes, FileOpType, FileOperation, MusicIndex, ReadMusicIndexIter, Song};
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::exit;
@@ -87,7 +87,7 @@ fn main() {
         .value_of("verbosity")
         .map(|v| v.parse::<usize>().unwrap())
         .unwrap_or(0);
-    let copy = matches.is_present("copy");
+    let operation = FileOpType::from(matches.is_present("copy"));
     let yes = matches.is_present("assume-yes");
 
     let abs_music_dir = match PathBuf::from(&music_dir).canonicalize() {
@@ -118,7 +118,7 @@ fn main() {
     }
     println!();
 
-    println!("changes..");
+    println!("changes...");
     let changes = Changes::from(&index, output_dir);
 
     if changes.dir_creations.is_empty() && changes.file_moves.is_empty() {
@@ -148,7 +148,10 @@ fn main() {
             "{} dirs will be created.\n{} files will be {}.\n Continue",
             changes.dir_creations.len(),
             changes.file_moves.len(),
-            if copy { "copied" } else { "moved" }
+            match operation {
+                FileOpType::Copy => "copied",
+                FileOpType::Move => "moved",
+            }
         ));
 
         if !ok {
@@ -158,6 +161,9 @@ fn main() {
     }
 
     println!("\nwriting...");
+    for e in changes.write(operation) {
+        println!("Error: {}", e);
+    }
 }
 
 #[inline]

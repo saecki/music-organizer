@@ -1,7 +1,7 @@
 use std::ffi::{OsStr, OsString};
-use std::io::Write;
 use std::iter::Iterator;
 use std::path::PathBuf;
+use std::{fs, io};
 use walkdir::WalkDir;
 
 const MUSIC_FILE_EXTENSIONS: [&str; 5] = ["m4a", "mp3", "m4b", "m4p", "m4v"];
@@ -27,23 +27,53 @@ pub struct Song {
 }
 
 #[derive(Default, Debug, PartialEq)]
+pub struct DirCreation {
+    pub path: PathBuf,
+}
+
+impl DirCreation {
+    pub fn excecute(&self) -> Result<(), io::Error> {
+        std::fs::create_dir(&self.path)
+    }
+}
+
+#[derive(Default, Debug, PartialEq)]
+pub struct FileOperation {
+    pub old: PathBuf,
+    pub new: PathBuf,
+}
+
+impl FileOperation {
+    pub fn excecute(&self, operation: &FileOpType) -> Result<(), io::Error> {
+        match operation {
+            FileOpType::Copy => fs::copy(&self.old, &self.new).map(|_| ()),
+            FileOpType::Move => fs::rename(&self.old, &self.new),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum FileOpType {
+    Move,
+    Copy,
+}
+
+impl From<bool> for FileOpType {
+    fn from(copy: bool) -> Self {
+        match copy {
+            true => Self::Copy,
+            false => Self::Move,
+        }
+    }
+}
+
+#[derive(Default, Debug, PartialEq)]
 pub struct Metadata {
     pub track: u16,
     pub artist: String,
     pub album_artist: String,
     pub album: String,
     pub title: String,
-}
-
-#[derive(Default, Debug, PartialEq)]
-pub struct FileMove {
-    pub old: PathBuf,
-    pub new: PathBuf,
-}
-
-#[derive(Default, Debug, PartialEq)]
-pub struct DirCreation {
-    pub path: PathBuf,
 }
 
 impl Metadata {
@@ -97,23 +127,11 @@ pub struct MusicIndex {
     pub unknown: Vec<usize>,
 }
 
-pub struct ReadMusicIndexIter<'a> {
-    iter: Box<dyn Iterator<Item = PathBuf>>,
-    pub index: &'a mut MusicIndex,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Changes {
-    pub output_dir: PathBuf,
-    pub dir_creations: Vec<DirCreation>,
-    pub file_moves: Vec<FileMove>,
-}
-
-pub struct WriteChangesIter<'a> {
-    pub changes: &'a Changes,
-}
-
 impl MusicIndex {
+    pub fn read(&mut self) -> usize {
+        ReadMusicIndexIter::from(self).count()
+    }
+
     pub fn read_iter<'a>(&'a mut self) -> ReadMusicIndexIter<'a> {
         ReadMusicIndexIter::from(self)
     }
@@ -126,6 +144,11 @@ impl From<PathBuf> for MusicIndex {
             ..Default::default()
         }
     }
+}
+
+pub struct ReadMusicIndexIter<'a> {
+    iter: Box<dyn Iterator<Item = PathBuf>>,
+    pub index: &'a mut MusicIndex,
 }
 
 impl<'a> From<&'a mut MusicIndex> for ReadMusicIndexIter<'a> {
@@ -152,7 +175,7 @@ impl<'a> From<&'a mut MusicIndex> for ReadMusicIndexIter<'a> {
 
         Self {
             iter: Box::new(iter),
-            index: index,
+            index,
         }
     }
 }
@@ -272,8 +295,15 @@ impl<'a> Iterator for ReadMusicIndexIter<'a> {
 //    }
 //}
 
-impl<'a> Changes<'a> {
-    pub fn from(index: &'a MusicIndex, output_dir: PathBuf) -> Self {
+#[derive(Debug, PartialEq)]
+pub struct Changes {
+    pub output_dir: PathBuf,
+    pub dir_creations: Vec<DirCreation>,
+    pub file_moves: Vec<FileOperation>,
+}
+
+impl Changes {
+    pub fn from(index: &MusicIndex, output_dir: PathBuf) -> Self {
         let mut dir_creations = Vec::new();
         let mut file_moves = Vec::with_capacity(index.songs.len() / 10);
 
@@ -331,7 +361,7 @@ impl<'a> Changes<'a> {
                     }
 
                     if new_file != song.current_file {
-                        file_moves.push(FileMove {
+                        file_moves.push(FileOperation {
                             old: song.current_file.clone(),
                             new: new_file,
                         });
@@ -351,7 +381,7 @@ impl<'a> Changes<'a> {
                 let song = &index.songs[*si];
                 let new_file = unknown_dir.join(song.current_file.file_name().unwrap());
 
-                file_moves.push(FileMove {
+                file_moves.push(FileOperation {
                     old: song.current_file.clone(),
                     new: new_file,
                 });
@@ -364,37 +394,30 @@ impl<'a> Changes<'a> {
             file_moves,
         }
     }
-}
 
-impl<'a> Changes<'a> {
-    //fn write(&self, copy: bool) {
-    //    if !output_dir.exists() {
-    //        match std::fs::create_dir_all(&output_dir) {
-    //            Ok(_) => println!("created dir: {}", output_dir.display()),
-    //            Err(e) => println!("error creating dir: {}\n{}", output_dir.display(), e),
-    //        }
-    //    }
-    //
-    //    unsafe {
-    //        LAST_LEN = 0;
-    //    }
-    //    for (i, d) in dir_creations.iter().enumerate() {
-    //        match std::fs::create_dir(&d.path) {
-    //            Ok(_) => print_verbose(&format!("{} creating dir {}", i, d.path.display()), verbose),
-    //            Err(e) => println!("error creating dir: {}:\n{}", d.path.display(), e),
-    //        }
-    //    }
-    //    println!();
-    //
-    //    unsafe {
-    //        LAST_LEN = 0;
-    //    }
-    //    for (i, f) in file_moves.iter().enumerate() {
-    //        mv_or_cp(&(i + 1), &f.old, &f.new, copy, verbose);
-    //    }
-    //
-    //    println!("\ndone")
-    //}
+    pub fn write(&self, operation: FileOpType) -> Vec<io::Error> {
+        let mut errors = Vec::new();
+
+        if !self.output_dir.exists() {
+            if let Err(e) = std::fs::create_dir_all(&self.output_dir) {
+                errors.push(e);
+            }
+        }
+
+        for d in &self.dir_creations {
+            if let Err(e) = d.excecute() {
+                errors.push(e);
+            }
+        }
+
+        for f in &self.file_moves {
+            if let Err(e) = f.excecute(&operation) {
+                errors.push(e);
+            }
+        }
+
+        errors
+    }
 }
 
 #[inline]
@@ -407,25 +430,6 @@ fn is_music_extension(s: &OsStr) -> bool {
 
     false
 }
-
-//fn mv_or_cp(song_index: &usize, old: &PathBuf, new: &PathBuf, copy: bool, verbose: bool) {
-//    if copy {
-//        print_verbose(
-//            &format!("{} copying {}", song_index, new.display()),
-//            verbose,
-//        );
-//        let _ = std::io::stdout().flush().is_ok();
-//        if let Err(e) = std::fs::copy(old, new) {
-//            println!("\nerror: {}", e);
-//        }
-//    } else {
-//        print_verbose(&format!("{} moving {}", song_index, new.display()), verbose);
-//        let _ = std::io::stdout().flush().is_ok();
-//        if let Err(e) = std::fs::rename(old, new) {
-//            println!("\nerror: {}", e);
-//        }
-//    }
-//}
 
 lazy_static::lazy_static! {
     static ref RE: regex::Regex = regex::Regex::new(r#"[<>:"/\|?*]"#).unwrap();
