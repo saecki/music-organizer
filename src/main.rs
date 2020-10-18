@@ -1,4 +1,5 @@
 use clap::{App, Arg, Shell};
+use colorful::Colorful;
 use music_organizer::{Changes, FileOpType, MusicIndex};
 use std::io::Write;
 use std::path::PathBuf;
@@ -119,63 +120,131 @@ fn main() {
     let yes = matches.is_present("assume-yes");
     let dryrun = matches.is_present("dryrun");
 
-    let op_type_str = match op_type {
-        FileOpType::Copy => "copied",
-        FileOpType::Move => "moved",
+    let (op_type_str_present, op_type_str_past) = match op_type {
+        FileOpType::Copy => ("copy", "copied"),
+        FileOpType::Move => ("move", "moved"),
     };
 
-    println!("indexing...");
-    let mut index = MusicIndex::from(music_dir);
+    println!("============================================================");
+    println!("# Indexing");
+    println!("============================================================");
+    let mut index = MusicIndex::from(music_dir.clone());
 
     for (i, m) in &mut index.read_iter().enumerate() {
         print_verbose(
-            &format!("{} {} - {}", i + 1, &m.artist, &m.title),
+            &format!(
+                "{} {} {} {}",
+                i + 1,
+                &m.artist.green(),
+                "-".green(),
+                &m.title.green()
+            ),
             verbosity >= 2,
         );
     }
     reset_print_verbose();
+    println!();
 
-    println!("checking...");
-    music_organizer::check(&index);
+    println!("============================================================");
+    println!("# Checking");
+    println!("============================================================");
+    music_organizer::check_inconsitent_artists(&mut index, |a, b| {
+        println!(
+            "These two artists are named similarly:\n{}\n{}",
+            a.name, b.name,
+        );
+        let index = input_options_loop(&[
+            "don't do anything",
+            "merge using first",
+            "merge using second",
+            "enter new name",
+        ]);
 
-    println!("changes...");
-    let changes = Changes::from(&index, output_dir);
+        match index {
+            0 => return None,
+            1 => {
+                println!("merging using first");
+                return Some(a.name.clone());
+            }
+            2 => {
+                println!("merging using second");
+                return Some(b.name.clone());
+            }
+            3 => loop {
+                let new_name = input_loop("enter new name:", |_| true);
+                println!("new name: '{}'", new_name);
+
+                let index = input_options_loop(&["ok", "reenter name", "dismiss"]);
+
+                match index {
+                    0 => return Some(new_name),
+                    1 => continue,
+                    _ => return None,
+                }
+            },
+            _ => unreachable!(),
+        }
+    });
+    println!();
+
+    music_organizer::check_inconsitent_total_tracks(&mut index, |ar, al, total_tracks| {
+        println!("{} - {} options:", ar.name, al.name);
+        for t in total_tracks.iter() {
+            println!("{:?}", t);
+        }
+        None
+    });
+    println!();
+
+    println!("============================================================");
+    println!("# Changes");
+    println!("============================================================");
+    let changes = Changes::from(&index, &output_dir);
 
     if changes.dir_creations.is_empty() && changes.file_operations.is_empty() {
-        println!("nothing to do exiting...");
+        println!("{}", "nothing to do exiting...".green());
         return;
     }
 
-    if !yes {
-        if verbosity >= 1 {
-            if !changes.dir_creations.is_empty() {
-                println!("dirs:");
-                for (i, d) in changes.dir_creations.iter().enumerate() {
-                    println!("{} {}", i + 1, d.path.display());
-                }
-                println!();
+    if verbosity >= 1 {
+        if !changes.dir_creations.is_empty() {
+            println!("dirs:");
+            for (i, d) in changes.dir_creations.iter().enumerate() {
+                println!(
+                    "{} create {}",
+                    i + 1,
+                    format!("{}", d.path.display()).green()
+                );
             }
-            if !changes.file_operations.is_empty() {
-                println!("files:");
-                for (i, f) in changes.file_operations.iter().enumerate() {
-                    println!(
-                        "{} {} {} to {}",
-                        i + 1,
-                        f.old.display(),
-                        op_type_str,
-                        f.new.display()
-                    );
-                }
-                println!();
-            }
+            println!();
         }
+        if !changes.file_operations.is_empty() {
+            println!("files:");
+            for (i, f) in changes.file_operations.iter().enumerate() {
+                println!(
+                    "{} {} {} to {}",
+                    i + 1,
+                    op_type_str_present,
+                    format!("{}", f.old.strip_prefix(&music_dir).unwrap().display()).yellow(),
+                    format!("{}", f.new.strip_prefix(&output_dir).unwrap().display()).green(),
+                );
+            }
+            println!();
+        }
+    }
 
-        let ok = input_confirmation_loop(&format!(
-            "{} dirs will be created.\n{} files will be {}.\n Continue",
-            changes.dir_creations.len(),
-            changes.file_operations.len(),
-            op_type_str,
-        ));
+    println!(
+        "{} dirs will be created.\n{} files will be {}.",
+        changes.dir_creations.len(),
+        changes.file_operations.len(),
+        op_type_str_past,
+    );
+
+    if dryrun {
+        println!("dryrun, exiting...");
+        exit(0);
+    } else if !yes {
+        let ok = input_confirmation_loop("Continue");
 
         if !ok {
             println!("exiting...");
@@ -183,12 +252,9 @@ fn main() {
         }
     }
 
-    if dryrun {
-        println!("dryrun, exiting...");
-        exit(0);
-    }
-
-    println!("\nwriting...");
+    println!("============================================================");
+    println!("# Writing");
+    println!("============================================================");
     for (i, (d, r)) in changes.dir_creation_iter().enumerate() {
         match r {
             Ok(_) => {
@@ -212,9 +278,9 @@ fn main() {
                     &format!(
                         "{} {} {} to {}",
                         i + 1,
-                        op_type_str,
-                        f.old.display(),
-                        f.new.display()
+                        op_type_str_past,
+                        format!("{}", f.old.strip_prefix(&music_dir).unwrap().display()).yellow(),
+                        format!("{}", f.new.strip_prefix(&output_dir).unwrap().display()).green(),
                     ),
                     verbosity >= 2,
                 );
@@ -222,12 +288,13 @@ fn main() {
             Err(e) => {
                 reset_print_verbose();
                 println!(
-                    "{} error {} {} to {}:\n{}",
+                    "{} {} {} {} to {}:\n{}",
                     i + 1,
-                    op_type_str,
-                    f.old.display(),
-                    f.new.display(),
-                    e
+                    "error.red".red(),
+                    op_type_str_past,
+                    format!("{}", f.old.strip_prefix(&music_dir).unwrap().display()).yellow(),
+                    format!("{}", f.new.strip_prefix(&output_dir).unwrap().display()).green(),
+                    e.to_string().red(),
                 );
             }
         }

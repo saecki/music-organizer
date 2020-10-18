@@ -257,73 +257,88 @@ impl<'a> Iterator for ReadMusicIndexIter<'a> {
     }
 }
 
-pub fn check(index: &MusicIndex) {
+pub fn check_inconsitent_artists(
+    index: &mut MusicIndex,
+    f: impl Fn(&Artist, &Artist) -> Option<String>,
+) {
     let mut offset = 1;
     for ar1 in index.artists.iter() {
         for ar2 in index.artists.iter().skip(offset) {
             if ar1.name.eq_ignore_ascii_case(&ar2.name) {
-                //TODO:
-                println!("inconsistent artist naming");
-                //println!(
-                //    "These two artists are named similarly:\n{}\n{}",
-                //    &ar1.name, &ar2.name
-                //);
-                //let index = input_options_loop(&[
-                //    "don't do anything",
-                //    "merge using first",
-                //    "merge using second",
-                //    "enter new name",
-                //]);
-
-                //match index {
-                //    0 => continue,
-                //    1 => println!("merging using first"),
-                //    2 => println!("merging using second"),
-                //    3 => loop {
-                //        let new_name = input_loop("enter new name:", |_| true);
-                //        println!("new name: '{}'", new_name);
-
-                //        let index = input_options_loop(&["ok", "reenter name", "dismiss"]);
-
-                //        match index {
-                //            0 => {
-                //                //TODO: rename
-                //                break;
-                //            }
-                //            1 => continue,
-                //            _ => break,
-                //        }
-                //    },
-                //    _ => continue,
-                //}
+                if let Some(_name) = f(ar1, ar2) {
+                    //TODO: update artists
+                    unimplemented!()
+                }
             }
         }
         offset += 1;
     }
+}
 
+pub fn check_inconsitent_albums(
+    index: &mut MusicIndex,
+    f: impl Fn(&Artist, &Album, &Album) -> Option<String>,
+) {
+    for ar in index.artists.iter() {
+        let mut offset = 1;
+        for al1 in ar.albums.iter() {
+            for al2 in ar.albums.iter().skip(offset) {
+                if al1.name.eq_ignore_ascii_case(&al2.name) {
+                    if let Some(_name) = f(ar, al1, al2) {
+                        //TODO: update albums
+                        unimplemented!()
+                    }
+                }
+            }
+            offset += 1;
+        }
+    }
+}
+
+pub fn check_inconsitent_total_tracks(
+    index: &MusicIndex,
+    f: impl Fn(&Artist, &Album, Vec<Option<u16>>) -> Option<Option<usize>>,
+) {
     for ar in index.artists.iter() {
         for al in ar.albums.iter() {
-            let mut songs = al.songs.iter().map(|&si| &index.songs[si]);
+            let mut total_tracks: Vec<Option<u16>> = al
+                .songs
+                .iter()
+                .map(|&si| &index.songs[si])
+                .map(|s| s.total_tracks)
+                .collect();
 
-            let s = songs.next().unwrap();
-            let total_tracks = s.total_tracks;
-            let total_discs = s.total_discs;
-
-            for s in songs {
-                if s.total_tracks != total_tracks {
-                    //TODO: inconsistent total tracks
-                    println!(
-                        "inconsistent total tracks: {} - {}\n{:?} != {:?}",
-                        ar.name, s.title, s.total_tracks, total_tracks
-                    );
+            total_tracks.sort();
+            total_tracks.dedup();
+            if total_tracks.len() > 1 {
+                if let Some(_t) = f(ar, al, total_tracks) {
+                    //TODO: update tags
+                    unimplemented!()
                 }
+            }
+        }
+    }
+}
 
-                if s.total_discs != total_discs {
-                    //TODO: inconsistent total discs
-                    println!(
-                        "inconsistent total discs: {} - {}\n{:?} != {:?}",
-                        ar.name, s.title, s.total_discs, total_discs
-                    );
+pub fn check_inconsitent_total_discs(
+    index: &MusicIndex,
+    f: impl Fn(&Artist, &Album, Vec<Option<u16>>) -> Option<Option<usize>>,
+) {
+    for ar in index.artists.iter() {
+        for al in ar.albums.iter() {
+            let mut total_discs: Vec<Option<u16>> = al
+                .songs
+                .iter()
+                .map(|&si| &index.songs[si])
+                .map(|s| s.total_discs)
+                .collect();
+
+            total_discs.sort();
+            total_discs.dedup();
+            if total_discs.len() > 1 {
+                if let Some(_t) = f(ar, al, total_discs) {
+                    //TODO: update tags
+                    unimplemented!()
                 }
             }
         }
@@ -337,7 +352,7 @@ pub struct Changes {
 }
 
 impl Changes {
-    pub fn from(index: &MusicIndex, output_dir: PathBuf) -> Self {
+    pub fn from(index: &MusicIndex, output_dir: &PathBuf) -> Self {
         let mut dir_creations = Vec::new();
         let mut file_moves = Vec::with_capacity(index.songs.len() / 10);
 
