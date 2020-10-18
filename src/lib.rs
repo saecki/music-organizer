@@ -20,7 +20,10 @@ pub struct Album {
 
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct Song {
-    pub track: u16,
+    pub track: Option<u16>,
+    pub total_tracks: Option<u16>,
+    pub disc: Option<u16>,
+    pub total_discs: Option<u16>,
     pub artist: String,
     pub title: String,
     pub current_file: PathBuf,
@@ -32,7 +35,7 @@ pub struct DirCreation {
 }
 
 impl DirCreation {
-    pub fn excecute(&self) -> Result<(), io::Error> {
+    pub fn execute(&self) -> Result<(), io::Error> {
         std::fs::create_dir(&self.path)
     }
 }
@@ -44,15 +47,15 @@ pub struct FileOperation {
 }
 
 impl FileOperation {
-    pub fn excecute(&self, operation: &FileOpType) -> Result<(), io::Error> {
-        match operation {
+    pub fn execute(&self, op_type: FileOpType) -> Result<(), io::Error> {
+        match op_type {
             FileOpType::Copy => fs::copy(&self.old, &self.new).map(|_| ()),
             FileOpType::Move => fs::rename(&self.old, &self.new),
         }
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum FileOpType {
     Move,
     Copy,
@@ -69,7 +72,10 @@ impl From<bool> for FileOpType {
 
 #[derive(Default, Debug, PartialEq)]
 pub struct Metadata {
-    pub track: u16,
+    pub track: Option<u16>,
+    pub total_tracks: Option<u16>,
+    pub disc: Option<u16>,
+    pub total_discs: Option<u16>,
     pub artist: String,
     pub album_artist: String,
     pub album: String,
@@ -81,13 +87,11 @@ impl Metadata {
         match path.extension().unwrap().to_str().unwrap() {
             "mp3" => {
                 if let Ok(tag) = id3::Tag::read_from_path(&path) {
-                    let track = match tag.track() {
-                        Some(t) => t as u16,
-                        None => 0,
-                    };
-
                     return Self {
-                        track,
+                        track: tag.track().map(|v| v as u16),
+                        total_tracks: tag.total_tracks().map(|v| v as u16),
+                        disc: tag.disc().map(|v| v as u16),
+                        total_discs: tag.total_discs().map(|v| v as u16),
                         artist: tag.artist().unwrap_or("").to_string(),
                         album_artist: tag.album_artist().unwrap_or("").to_string(),
                         title: tag.title().unwrap_or("").to_string(),
@@ -98,13 +102,13 @@ impl Metadata {
             }
             "m4a" | "m4b" | "m4p" | "m4v" => {
                 if let Ok(tag) = mp4ameta::Tag::read_from_path(&path) {
-                    let track = match tag.track_number() {
-                        (Some(t), _) => t as u16,
-                        (None, _) => 0,
-                    };
-
+                    let track = tag.track_number();
+                    let disc = tag.disc_number();
                     return Self {
-                        track,
+                        track: track.0,
+                        total_tracks: track.1,
+                        disc: disc.0,
+                        total_discs: disc.1,
                         artist: tag.artist().unwrap_or("").to_string(),
                         album_artist: tag.album_artist().unwrap_or("").to_string(),
                         title: tag.title().unwrap_or("").to_string(),
@@ -181,7 +185,7 @@ impl<'a> From<&'a mut MusicIndex> for ReadMusicIndexIter<'a> {
 }
 
 impl<'a> Iterator for ReadMusicIndexIter<'a> {
-    type Item = Song;
+    type Item = Metadata;
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(p) = self.iter.next() {
@@ -190,32 +194,35 @@ impl<'a> Iterator for ReadMusicIndexIter<'a> {
 
             let song = Song {
                 track: m.track,
+                total_tracks: m.total_tracks,
+                disc: m.disc,
+                total_discs: m.total_discs,
                 artist: m.artist.clone(),
-                title: m.title,
+                title: m.title.clone(),
                 current_file: p,
             };
 
-            self.index.songs.push(song.clone());
+            self.index.songs.push(song);
 
             let artist = if !m.album_artist.is_empty() {
-                m.album_artist
+                m.album_artist.clone()
             } else if !m.artist.is_empty() {
-                m.artist
+                m.artist.clone()
             } else {
                 self.index.unknown.push(song_index);
-                return Some(song);
+                return Some(m);
             };
 
             if self.index.artists.is_empty() {
                 self.index.artists.push(Artist {
                     name: artist,
                     albums: vec![Album {
-                        name: m.album,
+                        name: m.album.clone(),
                         songs: vec![song_index],
                     }],
                 });
 
-                return Some(song);
+                return Some(m);
             }
 
             for ar in &mut self.index.artists {
@@ -223,83 +230,110 @@ impl<'a> Iterator for ReadMusicIndexIter<'a> {
                     for al in &mut ar.albums {
                         if al.name == m.album {
                             al.songs.push(song_index);
-                            return Some(song);
+                            return Some(m);
                         }
                     }
 
                     ar.albums.push(Album {
-                        name: m.album,
+                        name: m.album.clone(),
                         songs: vec![song_index],
                     });
-                    return Some(song);
+                    return Some(m);
                 }
             }
 
             self.index.artists.push(Artist {
                 name: artist,
                 albums: vec![Album {
-                    name: m.album,
+                    name: m.album.clone(),
                     songs: vec![song_index],
                 }],
             });
 
-            return Some(song);
+            return Some(m);
         }
 
         None
     }
 }
 
-//fn check() {
-//    println!("\nchecking...");
-//
-//    let mut offset = 1;
-//    for ar1 in artists.iter() {
-//        for ar2 in artists.iter().skip(offset) {
-//            if ar1.name.eq_ignore_ascii_case(&ar2.name) {
-//                println!(
-//                    "These two artists are named similarly:\n{}\n{}",
-//                    &ar1.name, &ar2.name
-//                );
-//                let index = input_options_loop(&[
-//                    "don't do anything",
-//                    "merge using first",
-//                    "merge using second",
-//                    "enter new name",
-//                ]);
-//
-//                match index {
-//                    0 => continue,
-//                    1 => println!("merging using first"),
-//                    2 => println!("merging using second"),
-//                    3 => loop {
-//                        let new_name = input_loop("enter new name:", |_| true);
-//                        println!("new name: '{}'", new_name);
-//
-//                        let index = input_options_loop(&["ok", "reenter name", "dismiss"]);
-//
-//                        match index {
-//                            0 => {
-//                                //TODO: rename
-//                                break;
-//                            }
-//                            1 => continue,
-//                            _ => break,
-//                        }
-//                    },
-//                    _ => continue,
-//                }
-//            }
-//        }
-//        offset += 1;
-//    }
-//}
+pub fn check(index: &MusicIndex) {
+    let mut offset = 1;
+    for ar1 in index.artists.iter() {
+        for ar2 in index.artists.iter().skip(offset) {
+            if ar1.name.eq_ignore_ascii_case(&ar2.name) {
+                //TODO:
+                println!("inconsistent artist naming");
+                //println!(
+                //    "These two artists are named similarly:\n{}\n{}",
+                //    &ar1.name, &ar2.name
+                //);
+                //let index = input_options_loop(&[
+                //    "don't do anything",
+                //    "merge using first",
+                //    "merge using second",
+                //    "enter new name",
+                //]);
+
+                //match index {
+                //    0 => continue,
+                //    1 => println!("merging using first"),
+                //    2 => println!("merging using second"),
+                //    3 => loop {
+                //        let new_name = input_loop("enter new name:", |_| true);
+                //        println!("new name: '{}'", new_name);
+
+                //        let index = input_options_loop(&["ok", "reenter name", "dismiss"]);
+
+                //        match index {
+                //            0 => {
+                //                //TODO: rename
+                //                break;
+                //            }
+                //            1 => continue,
+                //            _ => break,
+                //        }
+                //    },
+                //    _ => continue,
+                //}
+            }
+        }
+        offset += 1;
+    }
+
+    for ar in index.artists.iter() {
+        for al in ar.albums.iter() {
+            let mut songs = al.songs.iter().map(|&si| &index.songs[si]);
+
+            let s = songs.next().unwrap();
+            let total_tracks = s.total_tracks;
+            let total_discs = s.total_discs;
+
+            for s in songs {
+                if s.total_tracks != total_tracks {
+                    //TODO: inconsistent total tracks
+                    println!(
+                        "inconsistent total tracks: {} - {}\n{:?} != {:?}",
+                        ar.name, s.title, s.total_tracks, total_tracks
+                    );
+                }
+
+                if s.total_discs != total_discs {
+                    //TODO: inconsistent total discs
+                    println!(
+                        "inconsistent total discs: {} - {}\n{:?} != {:?}",
+                        ar.name, s.title, s.total_discs, total_discs
+                    );
+                }
+            }
+        }
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub struct Changes {
-    pub output_dir: PathBuf,
     pub dir_creations: Vec<DirCreation>,
-    pub file_moves: Vec<FileOperation>,
+    pub file_operations: Vec<FileOperation>,
 }
 
 impl Changes {
@@ -307,7 +341,13 @@ impl Changes {
         let mut dir_creations = Vec::new();
         let mut file_moves = Vec::with_capacity(index.songs.len() / 10);
 
-        for ar in &index.artists {
+        if !output_dir.exists() {
+            dir_creations.push(DirCreation {
+                path: output_dir.clone(),
+            })
+        }
+
+        for ar in index.artists.iter() {
             let ar_dir = output_dir.join(valid_os_string(&ar.name));
             if !ar_dir.exists() {
                 dir_creations.push(DirCreation {
@@ -315,7 +355,7 @@ impl Changes {
                 });
             }
 
-            for al in &ar.albums {
+            for al in ar.albums.iter() {
                 let single_album_name =
                     format!("{} - single", index.songs[al.songs[0]].title.to_lowercase());
                 let is_single = al.name.is_empty()
@@ -328,8 +368,7 @@ impl Changes {
                     });
                 }
 
-                for si in &al.songs {
-                    let song = &index.songs[*si];
+                for song in al.songs.iter().map(|&si| &index.songs[si]) {
                     let extension = song.current_file.extension().unwrap();
 
                     let new_file;
@@ -350,7 +389,7 @@ impl Changes {
                             9 + song.artist.len() + song.title.len() + extension.len(),
                         );
 
-                        file_name.push(format!("{:02} - ", song.track));
+                        file_name.push(format!("{:02} - ", song.track.unwrap_or(0)));
                         file_name.push(valid_os_string(&song.artist));
                         file_name.push(" - ");
                         file_name.push(valid_os_string(&song.title));
@@ -389,34 +428,83 @@ impl Changes {
         }
 
         Self {
-            output_dir,
             dir_creations,
-            file_moves,
+            file_operations: file_moves,
         }
     }
 
-    pub fn write(&self, operation: FileOpType) -> Vec<io::Error> {
+    pub fn write(&self, op_type: FileOpType) -> Vec<io::Error> {
         let mut errors = Vec::new();
 
-        if !self.output_dir.exists() {
-            if let Err(e) = std::fs::create_dir_all(&self.output_dir) {
-                errors.push(e);
-            }
-        }
-
         for d in &self.dir_creations {
-            if let Err(e) = d.excecute() {
+            if let Err(e) = d.execute() {
                 errors.push(e);
             }
         }
 
-        for f in &self.file_moves {
-            if let Err(e) = f.excecute(&operation) {
+        for f in &self.file_operations {
+            if let Err(e) = f.execute(op_type) {
                 errors.push(e);
             }
         }
 
         errors
+    }
+
+    pub fn dir_creation_iter(&self) -> DirCreationIter {
+        DirCreationIter::from(self)
+    }
+
+    pub fn file_operation_iter(&self, op_type: FileOpType) -> FileOperationIter {
+        FileOperationIter::from(self, op_type)
+    }
+}
+
+pub struct DirCreationIter<'a> {
+    iter: Box<dyn Iterator<Item = &'a DirCreation> + 'a>,
+}
+
+impl<'a> From<&'a Changes> for DirCreationIter<'a> {
+    fn from(changes: &'a Changes) -> Self {
+        Self {
+            iter: Box::new(changes.dir_creations.iter()),
+        }
+    }
+}
+
+impl<'a> Iterator for DirCreationIter<'a> {
+    type Item = (&'a DirCreation, Result<(), io::Error>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let d = self.iter.next()?;
+        let r = d.execute();
+
+        Some((d, r))
+    }
+}
+
+pub struct FileOperationIter<'a> {
+    iter: Box<dyn Iterator<Item = &'a FileOperation> + 'a>,
+    op_type: FileOpType,
+}
+
+impl<'a> FileOperationIter<'a> {
+    pub fn from(changes: &'a Changes, op_type: FileOpType) -> Self {
+        Self {
+            iter: Box::new(changes.file_operations.iter()),
+            op_type,
+        }
+    }
+}
+
+impl<'a> Iterator for FileOperationIter<'a> {
+    type Item = (&'a FileOperation, Result<(), io::Error>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let f = self.iter.next()?;
+        let r = f.execute(self.op_type);
+
+        Some((f, r))
     }
 }
 

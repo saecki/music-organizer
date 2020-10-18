@@ -1,5 +1,5 @@
 use clap::{App, Arg, Shell};
-use music_organizer::{Changes, FileOpType, FileOperation, MusicIndex, ReadMusicIndexIter, Song};
+use music_organizer::{Changes, FileOpType, MusicIndex};
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::exit;
@@ -33,8 +33,7 @@ fn main() {
                 .short("c")
                 .long("copy")
                 .help("Copy the files instead of moving")
-                .requires("output-dir")
-                .takes_value(false),
+                .requires("output-dir"),
         )
         .arg(
             Arg::with_name("assume-yes")
@@ -44,12 +43,22 @@ fn main() {
                 .takes_value(false),
         )
         .arg(
+            Arg::with_name("dryrun")
+                .short("d")
+                .long("dryrun")
+                .help("Only check files don't change anything")
+                .takes_value(false)
+                .conflicts_with("assume-yes"),
+        )
+        .arg(
             Arg::with_name("verbosity")
                 .short("v")
                 .long("verbosity")
+                .value_name("level")
                 .help("Verbosity level of the output. 0 means least 2 means most verbose ouput.")
                 .takes_value(true)
-                .possible_values(&["0", "1", "2"]),
+                .possible_values(&["0", "1", "2"])
+                .default_value("1"),
         )
         .arg(
             Arg::with_name("generate-completion")
@@ -81,15 +90,7 @@ fn main() {
         println!("done");
         exit(0);
     }
-
     let music_dir = PathBuf::from(matches.value_of("music-dir").unwrap());
-    let verbosity = matches
-        .value_of("verbosity")
-        .map(|v| v.parse::<usize>().unwrap())
-        .unwrap_or(0);
-    let operation = FileOpType::from(matches.is_present("copy"));
-    let yes = matches.is_present("assume-yes");
-
     let abs_music_dir = match PathBuf::from(&music_dir).canonicalize() {
         Ok(t) => t,
         Err(e) => {
@@ -107,21 +108,40 @@ fn main() {
         None => abs_music_dir.clone(),
     };
 
+    let verbosity = matches
+        .value_of("verbosity")
+        .map(|v| v.parse::<usize>().unwrap())
+        .unwrap_or(0);
+    let op_type = match matches.is_present("copy") {
+        true => FileOpType::Copy,
+        false => FileOpType::Move,
+    };
+    let yes = matches.is_present("assume-yes");
+    let dryrun = matches.is_present("dryrun");
+
+    let op_type_str = match op_type {
+        FileOpType::Copy => "copied",
+        FileOpType::Move => "moved",
+    };
+
     println!("indexing...");
     let mut index = MusicIndex::from(music_dir);
 
-    for (i, s) in &mut index.read_iter().enumerate() {
+    for (i, m) in &mut index.read_iter().enumerate() {
         print_verbose(
-            &format!("{} {} - {}", i + 1, &s.artist, &s.title),
+            &format!("{} {} - {}", i + 1, &m.artist, &m.title),
             verbosity >= 2,
         );
     }
-    println!();
+    reset_print_verbose();
+
+    println!("checking...");
+    music_organizer::check(&index);
 
     println!("changes...");
     let changes = Changes::from(&index, output_dir);
 
-    if changes.dir_creations.is_empty() && changes.file_moves.is_empty() {
+    if changes.dir_creations.is_empty() && changes.file_operations.is_empty() {
         println!("nothing to do exiting...");
         return;
     }
@@ -135,10 +155,16 @@ fn main() {
                 }
                 println!();
             }
-            if !changes.file_moves.is_empty() {
+            if !changes.file_operations.is_empty() {
                 println!("files:");
-                for (i, f) in changes.file_moves.iter().enumerate() {
-                    println!("{} {}", i + 1, f.new.display());
+                for (i, f) in changes.file_operations.iter().enumerate() {
+                    println!(
+                        "{} {} {} to {}",
+                        i + 1,
+                        f.old.display(),
+                        op_type_str,
+                        f.new.display()
+                    );
                 }
                 println!();
             }
@@ -147,23 +173,68 @@ fn main() {
         let ok = input_confirmation_loop(&format!(
             "{} dirs will be created.\n{} files will be {}.\n Continue",
             changes.dir_creations.len(),
-            changes.file_moves.len(),
-            match operation {
-                FileOpType::Copy => "copied",
-                FileOpType::Move => "moved",
-            }
+            changes.file_operations.len(),
+            op_type_str,
         ));
 
         if !ok {
             println!("exiting...");
-            exit(1);
+            exit(0);
         }
     }
 
-    println!("\nwriting...");
-    for e in changes.write(operation) {
-        println!("Error: {}", e);
+    if dryrun {
+        println!("dryrun, exiting...");
+        exit(0);
     }
+
+    println!("\nwriting...");
+    for (i, (d, r)) in changes.dir_creation_iter().enumerate() {
+        match r {
+            Ok(_) => {
+                print_verbose(
+                    &format!("{} created dir {}", i + 1, d.path.display()),
+                    verbosity >= 2,
+                );
+            }
+            Err(e) => {
+                reset_print_verbose();
+                println!("{} error creating dir {}:\n{}", i + 1, d.path.display(), e);
+            }
+        }
+    }
+    reset_print_verbose();
+
+    for (i, (f, r)) in changes.file_operation_iter(op_type).enumerate() {
+        match r {
+            Ok(_) => {
+                print_verbose(
+                    &format!(
+                        "{} {} {} to {}",
+                        i + 1,
+                        op_type_str,
+                        f.old.display(),
+                        f.new.display()
+                    ),
+                    verbosity >= 2,
+                );
+            }
+            Err(e) => {
+                reset_print_verbose();
+                println!(
+                    "{} error {} {} to {}:\n{}",
+                    i + 1,
+                    op_type_str,
+                    f.old.display(),
+                    f.new.display(),
+                    e
+                );
+            }
+        }
+    }
+    reset_print_verbose();
+
+    println!("done");
 }
 
 #[inline]
@@ -183,6 +254,13 @@ fn print_verbose(str: &str, verbose: bool) {
         unsafe {
             LAST_LEN = len;
         }
+    }
+}
+
+fn reset_print_verbose() {
+    println!();
+    unsafe {
+        LAST_LEN = 0;
     }
 }
 
