@@ -6,30 +6,80 @@ use walkdir::WalkDir;
 
 const MUSIC_FILE_EXTENSIONS: [&str; 5] = ["m4a", "mp3", "m4b", "m4p", "m4v"];
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Artist {
     pub name: String,
     pub albums: Vec<Album>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Album {
-    pub name: String,
+    pub name: Option<String>,
     pub songs: Vec<usize>,
 }
 
-#[derive(Clone, Default, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Song {
     pub track: Option<u16>,
     pub total_tracks: Option<u16>,
     pub disc: Option<u16>,
     pub total_discs: Option<u16>,
-    pub artist: String,
-    pub title: String,
+    pub artist: Option<String>,
+    pub title: Option<String>,
     pub current_file: PathBuf,
 }
 
-#[derive(Default, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Metadata {
+    pub track: Option<u16>,
+    pub total_tracks: Option<u16>,
+    pub disc: Option<u16>,
+    pub total_discs: Option<u16>,
+    pub artist: Option<String>,
+    pub album_artist: Option<String>,
+    pub album: Option<String>,
+    pub title: Option<String>,
+}
+
+impl Metadata {
+    pub fn read_from(path: &PathBuf) -> Self {
+        match path.extension().unwrap().to_str().unwrap() {
+            "mp3" => {
+                if let Ok(tag) = id3::Tag::read_from_path(&path) {
+                    return Self {
+                        track: tag.track().map(|u| u as u16),
+                        total_tracks: tag.total_tracks().map(|u| u as u16),
+                        disc: tag.disc().map(|u| u as u16),
+                        total_discs: tag.total_discs().map(|u| u as u16),
+                        artist: tag.artist().map(|s| s.to_string()),
+                        album_artist: tag.album_artist().map(|s| s.to_string()),
+                        album: tag.album().map(|s| s.to_string()),
+                        title: tag.title().map(|s| s.to_string()),
+                    };
+                }
+            }
+            "m4a" | "m4b" | "m4p" | "m4v" => {
+                if let Ok(tag) = mp4ameta::Tag::read_from_path(&path) {
+                    return Self {
+                        track: tag.track_number(),
+                        total_tracks: tag.total_tracks(),
+                        disc: tag.disc_number(),
+                        total_discs: tag.total_discs(),
+                        artist: tag.artist().map(|s| s.to_string()),
+                        album_artist: tag.album_artist().map(|s| s.to_string()),
+                        album: tag.album().map(|s| s.to_string()),
+                        title: tag.title().map(|s| s.to_string()),
+                    };
+                }
+            }
+            _ => (),
+        }
+
+        Self::default()
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct DirCreation {
     pub path: PathBuf,
 }
@@ -40,10 +90,11 @@ impl DirCreation {
     }
 }
 
-#[derive(Default, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct FileOperation {
     pub old: PathBuf,
     pub new: PathBuf,
+    pub tag_update: Option<TagUpdate>,
 }
 
 impl FileOperation {
@@ -70,60 +121,134 @@ impl From<bool> for FileOpType {
     }
 }
 
-#[derive(Default, Debug, PartialEq)]
-pub struct Metadata {
-    pub track: Option<u16>,
-    pub total_tracks: Option<u16>,
-    pub disc: Option<u16>,
-    pub total_discs: Option<u16>,
-    pub artist: String,
-    pub album_artist: String,
-    pub album: String,
-    pub title: String,
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct TagUpdate {
+    pub meta: Metadata,
 }
 
-impl Metadata {
-    pub fn read_from(path: &PathBuf) -> Self {
+impl TagUpdate {
+    pub fn execute(&self, path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
         match path.extension().unwrap().to_str().unwrap() {
             "mp3" => {
-                if let Ok(tag) = id3::Tag::read_from_path(&path) {
-                    return Self {
-                        track: tag.track().map(|v| v as u16),
-                        total_tracks: tag.total_tracks().map(|v| v as u16),
-                        disc: tag.disc().map(|v| v as u16),
-                        total_discs: tag.total_discs().map(|v| v as u16),
-                        artist: tag.artist().unwrap_or("").to_string(),
-                        album_artist: tag.album_artist().unwrap_or("").to_string(),
-                        title: tag.title().unwrap_or("").to_string(),
-                        album: tag.album().unwrap_or("").to_string(),
-                    };
-                } else {
-                }
+                let tag = match id3::Tag::read_from_path(path) {
+                    Ok(mut tag) => {
+                        if let Some(a) = &self.meta.artist {
+                            match a.is_empty() {
+                                true => tag.remove_artist(),
+                                false => tag.set_artist(a),
+                            }
+                        }
+                        if let Some(a) = &self.meta.album_artist {
+                            match a.is_empty() {
+                                true => tag.remove_album_artist(),
+                                false => tag.set_album_artist(a),
+                            }
+                        }
+                        if let Some(a) = &self.meta.album {
+                            match a.is_empty() {
+                                true => tag.remove_album(),
+                                false => tag.set_album(a),
+                            }
+                        }
+                        if let Some(t) = &self.meta.title {
+                            match t.is_empty() {
+                                true => tag.remove_title(),
+                                false => tag.set_title(t),
+                            }
+                        }
+                        if let Some(t) = self.meta.track {
+                            match t == 0 {
+                                true => tag.remove_track(),
+                                false => tag.set_track(t as u32),
+                            }
+                        }
+                        if let Some(t) = self.meta.total_tracks {
+                            match t == 0 {
+                                true => tag.remove_total_tracks(),
+                                false => tag.set_total_tracks(t as u32),
+                            }
+                        }
+                        if let Some(t) = self.meta.disc {
+                            match t == 0 {
+                                true => tag.remove_disc(),
+                                false => tag.set_disc(t as u32),
+                            }
+                        }
+                        if let Some(t) = self.meta.total_discs {
+                            match t == 0 {
+                                true => tag.remove_total_discs(),
+                                false => tag.set_total_discs(t as u32),
+                            }
+                        }
+
+                        tag
+                    }
+                    Err(_) => id3::Tag::default(),
+                };
+
+                tag.write_to_path(path, id3::Version::Id3v24)?;
             }
             "m4a" | "m4b" | "m4p" | "m4v" => {
-                if let Ok(tag) = mp4ameta::Tag::read_from_path(&path) {
-                    let track = tag.track_number();
-                    let disc = tag.disc_number();
-                    return Self {
-                        track: track.0,
-                        total_tracks: track.1,
-                        disc: disc.0,
-                        total_discs: disc.1,
-                        artist: tag.artist().unwrap_or("").to_string(),
-                        album_artist: tag.album_artist().unwrap_or("").to_string(),
-                        title: tag.title().unwrap_or("").to_string(),
-                        album: tag.album().unwrap_or("").to_string(),
-                    };
-                }
+                let tag = match mp4ameta::Tag::read_from_path(path) {
+                    Ok(mut tag) => {
+                        if let Some(a) = &self.meta.artist {
+                            match a.is_empty() {
+                                true => tag.remove_artists(),
+                                false => tag.set_artist(a),
+                            }
+                        }
+                        if let Some(a) = &self.meta.album_artist {
+                            match a.is_empty() {
+                                true => tag.remove_album_artists(),
+                                false => tag.set_album_artist(a),
+                            }
+                        }
+                        if let Some(a) = &self.meta.album {
+                            match a.is_empty() {
+                                true => tag.remove_album(),
+                                false => tag.set_album(a),
+                            }
+                        }
+                        if let Some(t) = &self.meta.title {
+                            match t.is_empty() {
+                                true => tag.remove_title(),
+                                false => tag.set_title(t),
+                            }
+                        }
+                        match (self.meta.track, self.meta.total_tracks) {
+                            (Some(tn), Some(tt)) => match tn == 0 && tn == 0 {
+                                true => tag.remove_track(),
+                                false => tag.set_track(tn, tt),
+                            },
+                            (Some(tn), None) => tag.set_track_number(tn),
+                            (None, Some(tt)) => tag.set_total_tracks(tt),
+                            (None, None) => (),
+                        }
+                        match (self.meta.disc, self.meta.total_discs) {
+                            (Some(dn), Some(dt)) => match dn == 0 && dn == 0 {
+                                true => tag.remove_disc(),
+                                false => tag.set_disc(dn, dt),
+                            },
+                            (Some(dn), None) => tag.set_disc_number(dn),
+                            (None, Some(dt)) => tag.set_total_discs(dt),
+                            (None, None) => (),
+                        }
+
+                        tag
+                    }
+                    Err(_) => mp4ameta::Tag::default(),
+                };
+
+                tag.write_to_path(path)?;
             }
             _ => (),
         }
 
-        Self::default()
+        Ok(())
     }
 }
 
-#[derive(Default, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct MusicIndex {
     pub music_dir: PathBuf,
     pub songs: Vec<Song>,
@@ -204,10 +329,10 @@ impl<'a> Iterator for ReadMusicIndexIter<'a> {
 
             self.index.songs.push(song);
 
-            let artist = if !m.album_artist.is_empty() {
-                m.album_artist.clone()
-            } else if !m.artist.is_empty() {
-                m.artist.clone()
+            let artist = if let Some(a) = &m.album_artist {
+                a.clone()
+            } else if let Some(a) = &m.artist {
+                a.clone()
             } else {
                 self.index.unknown.push(song_index);
                 return Some(m);
@@ -283,10 +408,12 @@ pub fn check_inconsitent_albums(
         let mut offset = 1;
         for al1 in ar.albums.iter() {
             for al2 in ar.albums.iter().skip(offset) {
-                if al1.name.eq_ignore_ascii_case(&al2.name) {
-                    if let Some(_name) = f(ar, al1, al2) {
-                        //TODO: update albums
-                        unimplemented!()
+                if let (Some(al1_name), Some(al2_name)) = (&al1.name, &al2.name) {
+                    if al1_name.eq_ignore_ascii_case(&al2_name) {
+                        if let Some(_name) = f(ar, al1, al2) {
+                            //TODO: update albums
+                            unimplemented!()
+                        }
                     }
                 }
             }
@@ -297,7 +424,7 @@ pub fn check_inconsitent_albums(
 
 pub fn check_inconsitent_total_tracks(
     index: &MusicIndex,
-    f: impl Fn(&Artist, &Album, Vec<Option<u16>>) -> Option<Option<usize>>,
+    f: impl Fn(&Artist, &Album, Vec<Option<u16>>) -> Option<u16>,
 ) {
     for ar in index.artists.iter() {
         for al in ar.albums.iter() {
@@ -322,7 +449,7 @@ pub fn check_inconsitent_total_tracks(
 
 pub fn check_inconsitent_total_discs(
     index: &MusicIndex,
-    f: impl Fn(&Artist, &Album, Vec<Option<u16>>) -> Option<Option<usize>>,
+    f: impl Fn(&Artist, &Album, Vec<Option<u16>>) -> Option<u16>,
 ) {
     for ar in index.artists.iter() {
         for al in ar.albums.iter() {
@@ -345,7 +472,7 @@ pub fn check_inconsitent_total_discs(
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Changes {
     pub dir_creations: Vec<DirCreation>,
     pub file_operations: Vec<FileOperation>,
@@ -371,11 +498,22 @@ impl Changes {
             }
 
             for al in ar.albums.iter() {
-                let single_album_name =
-                    format!("{} - single", index.songs[al.songs[0]].title.to_lowercase());
-                let is_single = al.name.is_empty()
-                    || al.songs.len() == 1 && al.name.to_lowercase() == single_album_name;
-                let al_dir = ar_dir.join(valid_os_string(&al.name));
+                let single_album_name = index.songs[al.songs[0]]
+                    .title
+                    .as_ref()
+                    .map(|t| format!("{} - single", &t));
+                let is_single = match (&al.name, &single_album_name) {
+                    (None, _) => true,
+                    (Some(al_name), Some(s_al_name)) => {
+                        al_name.eq_ignore_ascii_case(s_al_name) && al.songs.len() == 1
+                            || al_name.is_empty()
+                    }
+                    _ => false,
+                };
+                let al_dir = match &al.name {
+                    Some(s) => ar_dir.join(valid_os_string(&s)),
+                    None => ar_dir.clone(),
+                };
 
                 if !is_single && !al_dir.exists() {
                     dir_creations.push(DirCreation {
@@ -392,9 +530,9 @@ impl Changes {
                             4 + song.artist.len() + song.title.len() + extension.len(),
                         );
 
-                        file_name.push(valid_os_string(&song.artist));
+                        file_name.push(valid_os_string(song.artist.as_str()));
                         file_name.push(" - ");
-                        file_name.push(valid_os_string(&song.title));
+                        file_name.push(valid_os_string(song.title.as_str()));
                         file_name.push(".");
                         file_name.push(extension);
 
@@ -404,10 +542,15 @@ impl Changes {
                             9 + song.artist.len() + song.title.len() + extension.len(),
                         );
 
-                        file_name.push(format!("{:02} - ", song.track.unwrap_or(0)));
-                        file_name.push(valid_os_string(&song.artist));
+                        let track = match song.track {
+                            Some(n) => n,
+                            _ => 0,
+                        };
+
+                        file_name.push(format!("{:02} - ", track));
+                        file_name.push(valid_os_string(song.artist.as_str()));
                         file_name.push(" - ");
-                        file_name.push(valid_os_string(&song.title));
+                        file_name.push(valid_os_string(song.title.as_str()));
                         file_name.push(".");
                         file_name.push(extension);
 
@@ -532,6 +675,41 @@ fn is_music_extension(s: &OsStr) -> bool {
     }
 
     false
+}
+
+pub trait OptionAsStr {
+    fn as_str(&self) -> &str;
+}
+
+impl OptionAsStr for Option<String> {
+    fn as_str(&self) -> &str {
+        match self {
+            Some(s) => s.as_str(),
+            _ => "",
+        }
+    }
+}
+
+impl OptionAsStr for Option<&String> {
+    fn as_str(&self) -> &str {
+        match self {
+            Some(s) => s.as_str(),
+            _ => "",
+        }
+    }
+}
+
+pub trait OptionLen {
+    fn len(&self) -> usize;
+}
+
+impl OptionLen for Option<String> {
+    fn len(&self) -> usize {
+        match self {
+            Some(s) => s.len(),
+            _ => 0,
+        }
+    }
 }
 
 lazy_static::lazy_static! {

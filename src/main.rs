@@ -1,6 +1,6 @@
 use clap::{App, Arg, Shell};
 use colorful::Colorful;
-use music_organizer::{Changes, FileOpType, MusicIndex};
+use music_organizer::{Changes, FileOpType, MusicIndex, OptionAsStr};
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::exit;
@@ -134,10 +134,10 @@ fn main() {
         print_verbose(
             &format!(
                 "{} {} {} {}",
-                i + 1,
-                &m.artist.green(),
+                (i + 1).to_string().blue(),
+                m.artist.as_str().green(),
                 "-".green(),
-                &m.title.green()
+                m.title.as_str().green()
             ),
             verbosity >= 2,
         );
@@ -188,7 +188,7 @@ fn main() {
     println!();
 
     music_organizer::check_inconsitent_total_tracks(&mut index, |ar, al, total_tracks| {
-        println!("{} - {} options:", ar.name, al.name);
+        println!("{} - {} options:", ar.name.as_str(), al.name.as_str());
         for t in total_tracks.iter() {
             println!("{:?}", t);
         }
@@ -196,15 +196,15 @@ fn main() {
     });
     println!();
 
-    println!("============================================================");
-    println!("# Changes");
-    println!("============================================================");
     let changes = Changes::from(&index, &output_dir);
 
     if changes.dir_creations.is_empty() && changes.file_operations.is_empty() {
         println!("{}", "nothing to do exiting...".green());
         return;
     }
+    println!("============================================================");
+    println!("# Changes");
+    println!("============================================================");
 
     if verbosity >= 1 {
         if !changes.dir_creations.is_empty() {
