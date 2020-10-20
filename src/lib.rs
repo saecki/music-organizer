@@ -94,7 +94,7 @@ impl DirCreation {
 pub struct FileOperation {
     pub old: PathBuf,
     pub new: PathBuf,
-    pub tag_update: Option<TagUpdate>,
+    //pub tag_update: Option<TagUpdate>,
 }
 
 impl FileOperation {
@@ -390,9 +390,12 @@ pub fn check_inconsitent_artists(
     for ar1 in index.artists.iter() {
         for ar2 in index.artists.iter().skip(offset) {
             if ar1.name.eq_ignore_ascii_case(&ar2.name) {
-                if let Some(_name) = f(ar1, ar2) {
+                if let Some(name) = f(ar1, ar2) {
                     //TODO: update artists
-                    unimplemented!()
+                    println!(
+                        "update artists {} and {} to {:?}",
+                        &ar1.name, &ar2.name, name,
+                    );
                 }
             }
         }
@@ -410,9 +413,12 @@ pub fn check_inconsitent_albums(
             for al2 in ar.albums.iter().skip(offset) {
                 if let (Some(al1_name), Some(al2_name)) = (&al1.name, &al2.name) {
                     if al1_name.eq_ignore_ascii_case(&al2_name) {
-                        if let Some(_name) = f(ar, al1, al2) {
+                        if let Some(name) = f(ar, al1, al2) {
                             //TODO: update albums
-                            unimplemented!()
+                            println!(
+                                "update album {} - {:?}/{:?} to {:?}",
+                                &ar.name, &al1.name, &al2.name, name,
+                            );
                         }
                     }
                 }
@@ -438,9 +444,12 @@ pub fn check_inconsitent_total_tracks(
             total_tracks.sort();
             total_tracks.dedup();
             if total_tracks.len() > 1 {
-                if let Some(_t) = f(ar, al, total_tracks) {
+                if let Some(t) = f(ar, al, total_tracks) {
                     //TODO: update tags
-                    unimplemented!()
+                    println!(
+                        "update track total of album {} - {:?} to {:?}",
+                        ar.name, al.name, t
+                    );
                 }
             }
         }
@@ -463,9 +472,12 @@ pub fn check_inconsitent_total_discs(
             total_discs.sort();
             total_discs.dedup();
             if total_discs.len() > 1 {
-                if let Some(_t) = f(ar, al, total_discs) {
+                if let Some(d) = f(ar, al, total_discs) {
                     //TODO: update tags
-                    unimplemented!()
+                    println!(
+                        "update track total of album {} - {:?} to {:?}",
+                        ar.name, al.name, d
+                    );
                 }
             }
         }

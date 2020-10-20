@@ -174,9 +174,9 @@ fn main() {
                 let new_name = input_loop("enter new name:", |_| true);
                 println!("new name: '{}'", new_name);
 
-                let index = input_options_loop(&["ok", "reenter name", "dismiss"]);
+                let i = input_options_loop(&["ok", "reenter name", "dismiss"]);
 
-                match index {
+                match i {
                     0 => return Some(new_name),
                     1 => continue,
                     _ => return None,
@@ -188,16 +188,47 @@ fn main() {
     println!();
 
     music_organizer::check_inconsitent_total_tracks(&mut index, |ar, al, total_tracks| {
-        println!("{} - {} options:", ar.name.as_str(), al.name.as_str());
-        for t in total_tracks.iter() {
-            println!("{:?}", t);
+        println!(
+            "{} - {} this album has different total track values:",
+            ar.name.as_str(),
+            al.name.as_str()
+        );
+
+        let mut options = vec!["don't do anything", "remove the value", "enter a new value"];
+
+        let values: Vec<String> = total_tracks
+            .iter()
+            .map(|t| match t {
+                Some(n) => format!("{:02}", n),
+                None => "none".to_string(),
+            })
+            .collect();
+
+        options.extend(values.iter().map(|s| s.as_str()));
+
+        let i = input_options_loop(&options);
+
+        match i {
+            0 => return None,
+            1 => return Some(0),
+            2 => loop {
+                let new_value = input_loop_parse::<u16>("enter a new value:");
+                println!("new value: '{}'", new_value);
+
+                let i = input_options_loop(&["ok", "reenter value", "dismiss"]);
+
+                match i {
+                    0 => return Some(new_value),
+                    1 => continue,
+                    _ => return None,
+                }
+            },
+            _ => return total_tracks[i - 3],
         }
-        None
     });
     println!();
 
     let changes = Changes::from(&index, &output_dir);
-
     if changes.dir_creations.is_empty() && changes.file_operations.is_empty() {
         println!("{}", "nothing to do exiting...".green());
         return;
@@ -332,13 +363,13 @@ fn reset_print_verbose() {
 }
 
 fn input_loop(str: &str, predicate: fn(&str) -> bool) -> String {
-    let mut input = String::with_capacity(10);
-
     loop {
         println!("{}", str);
 
+        let mut input = String::new();
         match std::io::stdin().read_line(&mut input) {
             Ok(_) => {
+                input.pop();
                 if predicate(&input) {
                     return input;
                 }
@@ -348,12 +379,22 @@ fn input_loop(str: &str, predicate: fn(&str) -> bool) -> String {
     }
 }
 
+fn input_loop_parse<T: FromStr + Default>(str: &str) -> T {
+    input_loop(str, |v| v.parse::<T>().is_ok())
+        .parse::<T>()
+        .unwrap_or(T::default()) // Unreachable default
+}
+
 fn input_options_loop(options: &[&str]) -> usize {
     let mut input = String::with_capacity(2);
 
     loop {
         for (i, s) in options.iter().enumerate() {
-            println!("[{}] {}", i, s);
+            if options.len() < 10 {
+                println!("[{}] {}", i, s);
+            } else {
+                println!("[{:02}] {}", i, s);
+            }
         }
 
         match std::io::stdin().read_line(&mut input) {
