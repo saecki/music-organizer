@@ -43,14 +43,24 @@ pub struct Metadata {
 
 impl Metadata {
     pub fn read_from(path: &PathBuf) -> Self {
+        fn zero_none(n: Option<u16>) -> Option<u16> {
+            match n {
+                Some(n) => match n == 0 {
+                    true => None,
+                    false => Some(n),
+                },
+                None => None,
+            }
+        }
+
         match path.extension().unwrap().to_str().unwrap() {
             "mp3" => {
                 if let Ok(tag) = id3::Tag::read_from_path(&path) {
                     return Self {
-                        track: tag.track().map(|u| u as u16),
-                        total_tracks: tag.total_tracks().map(|u| u as u16),
-                        disc: tag.disc().map(|u| u as u16),
-                        total_discs: tag.total_discs().map(|u| u as u16),
+                        track: zero_none(tag.track().map(|u| u as u16)),
+                        total_tracks: zero_none(tag.total_tracks().map(|u| u as u16)),
+                        disc: zero_none(tag.disc().map(|u| u as u16)),
+                        total_discs: zero_none(tag.total_discs().map(|u| u as u16)),
                         artist: tag.artist().map(|s| s.to_string()),
                         album_artist: tag.album_artist().map(|s| s.to_string()),
                         album: tag.album().map(|s| s.to_string()),
@@ -61,10 +71,10 @@ impl Metadata {
             "m4a" | "m4b" | "m4p" | "m4v" => {
                 if let Ok(tag) = mp4ameta::Tag::read_from_path(&path) {
                     return Self {
-                        track: tag.track_number(),
-                        total_tracks: tag.total_tracks(),
-                        disc: tag.disc_number(),
-                        total_discs: tag.total_discs(),
+                        track: zero_none(tag.track_number()),
+                        total_tracks: zero_none(tag.total_tracks()),
+                        disc: zero_none(tag.disc_number()),
+                        total_discs: zero_none(tag.total_discs()),
                         artist: tag.artist().map(|s| s.to_string()),
                         album_artist: tag.album_artist().map(|s| s.to_string()),
                         album: tag.album().map(|s| s.to_string()),
@@ -216,7 +226,7 @@ impl TagUpdate {
                             }
                         }
                         match (self.meta.track, self.meta.total_tracks) {
-                            (Some(tn), Some(tt)) => match tn == 0 && tn == 0 {
+                            (Some(tn), Some(tt)) => match tn == 0 && tt == 0 {
                                 true => tag.remove_track(),
                                 false => tag.set_track(tn, tt),
                             },
@@ -225,7 +235,7 @@ impl TagUpdate {
                             (None, None) => (),
                         }
                         match (self.meta.disc, self.meta.total_discs) {
-                            (Some(dn), Some(dt)) => match dn == 0 && dn == 0 {
+                            (Some(dn), Some(dt)) => match dn == 0 && dt == 0 {
                                 true => tag.remove_disc(),
                                 false => tag.set_disc(dn, dt),
                             },
@@ -430,19 +440,23 @@ pub fn check_inconsitent_albums(
 
 pub fn check_inconsitent_total_tracks(
     index: &MusicIndex,
-    f: impl Fn(&Artist, &Album, Vec<Option<u16>>) -> Option<u16>,
+    f: impl Fn(&Artist, &Album, Vec<(Vec<&Song>, Option<u16>)>) -> Option<u16>,
 ) {
     for ar in index.artists.iter() {
         for al in ar.albums.iter() {
-            let mut total_tracks: Vec<Option<u16>> = al
-                .songs
-                .iter()
-                .map(|&si| &index.songs[si])
-                .map(|s| s.total_tracks)
-                .collect();
+            let mut total_tracks: Vec<(Vec<&Song>, Option<u16>)> = Vec::new();
 
-            total_tracks.sort();
-            total_tracks.dedup();
+            'songs: for s in al.songs.iter().map(|&si| &index.songs[si]) {
+                for (songs, tt) in total_tracks.iter_mut() {
+                    if *tt == s.total_tracks {
+                        songs.push(s);
+                        continue 'songs;
+                    }
+                }
+
+                total_tracks.push((vec![s], s.total_tracks));
+            }
+
             if total_tracks.len() > 1 {
                 if let Some(t) = f(ar, al, total_tracks) {
                     //TODO: update tags
@@ -542,9 +556,9 @@ impl Changes {
                             4 + song.artist.len() + song.title.len() + extension.len(),
                         );
 
-                        file_name.push(valid_os_string(song.artist.as_str()));
+                        file_name.push(valid_os_string(song.artist.opt_str()));
                         file_name.push(" - ");
-                        file_name.push(valid_os_string(song.title.as_str()));
+                        file_name.push(valid_os_string(song.title.opt_str()));
                         file_name.push(".");
                         file_name.push(extension);
 
@@ -560,9 +574,9 @@ impl Changes {
                         };
 
                         file_name.push(format!("{:02} - ", track));
-                        file_name.push(valid_os_string(song.artist.as_str()));
+                        file_name.push(valid_os_string(song.artist.opt_str()));
                         file_name.push(" - ");
-                        file_name.push(valid_os_string(song.title.as_str()));
+                        file_name.push(valid_os_string(song.title.opt_str()));
                         file_name.push(".");
                         file_name.push(extension);
 
@@ -690,11 +704,11 @@ fn is_music_extension(s: &OsStr) -> bool {
 }
 
 pub trait OptionAsStr {
-    fn as_str(&self) -> &str;
+    fn opt_str(&self) -> &str;
 }
 
 impl OptionAsStr for Option<String> {
-    fn as_str(&self) -> &str {
+    fn opt_str(&self) -> &str {
         match self {
             Some(s) => s.as_str(),
             _ => "",
@@ -703,7 +717,7 @@ impl OptionAsStr for Option<String> {
 }
 
 impl OptionAsStr for Option<&String> {
-    fn as_str(&self) -> &str {
+    fn opt_str(&self) -> &str {
         match self {
             Some(s) => s.as_str(),
             _ => "",

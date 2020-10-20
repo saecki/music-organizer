@@ -135,9 +135,9 @@ fn main() {
             &format!(
                 "{} {} {} {}",
                 (i + 1).to_string().blue(),
-                m.artist.as_str().green(),
+                m.artist.opt_str().green(),
                 "-".green(),
-                m.title.as_str().green()
+                m.title.opt_str().green()
             ),
             verbosity >= 2,
         );
@@ -149,16 +149,19 @@ fn main() {
     println!("# Checking");
     println!("============================================================");
     music_organizer::check_inconsitent_artists(&mut index, |a, b| {
-        println!(
+        let msg = format!(
             "These two artists are named similarly:\n{}\n{}",
             a.name, b.name,
         );
-        let index = input_options_loop(&[
-            "don't do anything",
-            "merge using first",
-            "merge using second",
-            "enter new name",
-        ]);
+        let index = input_options_loop(
+            &msg,
+            &[
+                "don't do anything",
+                "merge using first",
+                "merge using second",
+                "enter new name",
+            ],
+        );
 
         match index {
             0 => return None,
@@ -172,9 +175,9 @@ fn main() {
             }
             3 => loop {
                 let new_name = input_loop("enter new name:", |_| true);
-                println!("new name: '{}'", new_name);
+                let msg = format!("new name: '{}'", new_name);
 
-                let i = input_options_loop(&["ok", "reenter name", "dismiss"]);
+                let i = input_options_loop(&msg, &["ok", "reenter name", "dismiss"]);
 
                 match i {
                     0 => return Some(new_name),
@@ -188,34 +191,56 @@ fn main() {
     println!();
 
     music_organizer::check_inconsitent_total_tracks(&mut index, |ar, al, total_tracks| {
-        println!(
+        let msg = format!(
             "{} - {} this album has different total track values:",
-            ar.name.as_str(),
-            al.name.as_str()
+            ar.name,
+            al.name.opt_str(),
         );
 
         let mut options = vec!["don't do anything", "remove the value", "enter a new value"];
 
         let values: Vec<String> = total_tracks
             .iter()
-            .map(|t| match t {
-                Some(n) => format!("{:02}", n),
-                None => "none".to_string(),
+            .map(|(songs, tt)| {
+                let mut tt_str = match tt {
+                    Some(n) => format!("{:02}:   ", n),
+                    None => "none: ".to_string(),
+                };
+                let mut iter = songs.iter();
+
+                let s = iter.next().unwrap();
+                tt_str.push_str(&format!(
+                    "{:02} - {} - {}",
+                    &s.track.unwrap_or(0),
+                    &s.artist.opt_str(),
+                    &s.title.opt_str()
+                ));
+
+                for s in iter {
+                    tt_str.push_str(&format!(
+                        "\n      {:02} - {} - {}",
+                        &s.track.unwrap_or(0),
+                        &s.artist.opt_str(),
+                        &s.title.opt_str()
+                    ));
+                }
+
+                tt_str
             })
             .collect();
 
         options.extend(values.iter().map(|s| s.as_str()));
 
-        let i = input_options_loop(&options);
+        let i = input_options_loop(&msg, &options);
 
         match i {
             0 => return None,
             1 => return Some(0),
             2 => loop {
                 let new_value = input_loop_parse::<u16>("enter a new value:");
-                println!("new value: '{}'", new_value);
+                let msg = format!("new value: '{}'", new_value);
 
-                let i = input_options_loop(&["ok", "reenter value", "dismiss"]);
+                let i = input_options_loop(&msg, &["ok", "reenter value", "dismiss"]);
 
                 match i {
                     0 => return Some(new_value),
@@ -223,7 +248,7 @@ fn main() {
                     _ => return None,
                 }
             },
-            _ => return total_tracks[i - 3],
+            _ => return total_tracks[i - 3].1,
         }
     });
     println!();
@@ -243,7 +268,7 @@ fn main() {
             for (i, d) in changes.dir_creations.iter().enumerate() {
                 println!(
                     "{} create {}",
-                    i + 1,
+                    (i + 1).to_string().blue(),
                     format!("{}", d.path.display()).green()
                 );
             }
@@ -254,7 +279,7 @@ fn main() {
             for (i, f) in changes.file_operations.iter().enumerate() {
                 println!(
                     "{} {} {} to {}",
-                    i + 1,
+                    (i + 1).to_string().blue(),
                     op_type_str_present,
                     format!("{}", f.old.strip_prefix(&music_dir).unwrap().display()).yellow(),
                     format!("{}", f.new.strip_prefix(&output_dir).unwrap().display()).green(),
@@ -290,13 +315,22 @@ fn main() {
         match r {
             Ok(_) => {
                 print_verbose(
-                    &format!("{} created dir {}", i + 1, d.path.display()),
+                    &format!(
+                        "{} created dir {}",
+                        (i + 1).to_string().blue(),
+                        d.path.display()
+                    ),
                     verbosity >= 2,
                 );
             }
             Err(e) => {
                 reset_print_verbose();
-                println!("{} error creating dir {}:\n{}", i + 1, d.path.display(), e);
+                println!(
+                    "{} error creating dir {}:\n{}",
+                    (i + 1).to_string().blue(),
+                    d.path.display(),
+                    e
+                );
             }
         }
     }
@@ -308,7 +342,7 @@ fn main() {
                 print_verbose(
                     &format!(
                         "{} {} {} to {}",
-                        i + 1,
+                        (i + 1).to_string().blue(),
                         op_type_str_past,
                         format!("{}", f.old.strip_prefix(&music_dir).unwrap().display()).yellow(),
                         format!("{}", f.new.strip_prefix(&output_dir).unwrap().display()).green(),
@@ -320,7 +354,7 @@ fn main() {
                 reset_print_verbose();
                 println!(
                     "{} {} {} {} to {}:\n{}",
-                    i + 1,
+                    (i + 1).to_string().blue(),
                     "error.red".red(),
                     op_type_str_past,
                     format!("{}", f.old.strip_prefix(&music_dir).unwrap().display()).yellow(),
@@ -365,8 +399,8 @@ fn reset_print_verbose() {
 fn input_loop(str: &str, predicate: fn(&str) -> bool) -> String {
     loop {
         println!("{}", str);
-
         let mut input = String::new();
+
         match std::io::stdin().read_line(&mut input) {
             Ok(_) => {
                 input.pop();
@@ -382,18 +416,19 @@ fn input_loop(str: &str, predicate: fn(&str) -> bool) -> String {
 fn input_loop_parse<T: FromStr + Default>(str: &str) -> T {
     input_loop(str, |v| v.parse::<T>().is_ok())
         .parse::<T>()
-        .unwrap_or(T::default()) // Unreachable default
+        .unwrap_or_else(|_| unreachable!()) // Can't use unwrap because FromStr::Err does not neccesarily implement Debug
 }
 
-fn input_options_loop(options: &[&str]) -> usize {
-    let mut input = String::with_capacity(2);
-
+fn input_options_loop(str: &str, options: &[&str]) -> usize {
     loop {
+        println!("{}", str);
+        let mut input = String::with_capacity(2);
+
         for (i, s) in options.iter().enumerate() {
             if options.len() < 10 {
-                println!("[{}] {}", i, s);
+                println!("[{}] {}", i, s.replace("\n", "\n    "));
             } else {
-                println!("[{:02}] {}", i, s);
+                println!("[{:02}] {}", i, s.replace("\n", "\n     "));
             }
         }
 
@@ -414,10 +449,10 @@ fn input_options_loop(options: &[&str]) -> usize {
 }
 
 fn input_confirmation_loop(str: &str) -> bool {
-    let mut input = String::with_capacity(2);
-
     loop {
         print!("{} [y/N]?", str);
+        let mut input = String::with_capacity(2);
+
         let _ = std::io::stdout().flush().is_ok();
 
         if let Err(e) = std::io::stdin().read_line(&mut input) {
