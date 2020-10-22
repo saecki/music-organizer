@@ -148,194 +148,10 @@ fn main() {
     println!("============================================================");
     println!("# Checking");
     println!("============================================================");
-    music_organizer::check_inconsitent_artists(&mut index, |i, a, b| {
-        fn print(artist: &Artist, ind: &MusicIndex) {
-            println!("{}:", artist.name.as_str().yellow());
-            for (i, al) in artist.albums.iter().enumerate() {
-                if i == 10 {
-                    println!("   {}", "...".green());
-                    break;
-                }
-                println!("   {}:", al.name);
-                for (j, s) in al.songs.iter().map(|&si| &ind.songs[si]).enumerate() {
-                    if i >= 4 || j == 3 {
-                        println!("      {}", "...".green());
-                        break;
-                    } else {
-                        println!(
-                            "      {:02} - {} - {}",
-                            s.track.unwrap_or(0),
-                            s.artist.opt_str(),
-                            s.title.opt_str()
-                        );
-                    }
-                }
-            }
-        }
-        println!("These two artists are named similarly:");
-        print(a, i);
-        println!();
-        print(b, i);
-        println!();
-
-        let index = input_options_loop(
-            "",
-            &[
-                "don't do anything",
-                "rename first to second",
-                "rename second to first",
-                "enter new name",
-            ],
-        );
-
-        match index {
-            0 => return None,
-            1 => {
-                println!("merging using first");
-                return Some(a.name.clone());
-            }
-            2 => {
-                println!("merging using second");
-                return Some(b.name.clone());
-            }
-            3 => loop {
-                let new_name = input_loop("enter new name:", |_| true);
-                let msg = format!("new name: '{}'", new_name);
-
-                let i = input_options_loop(&msg, &["ok", "reenter name", "dismiss"]);
-
-                match i {
-                    0 => return Some(new_name),
-                    1 => continue,
-                    _ => return None,
-                }
-            },
-            _ => unreachable!(),
-        }
-    });
-    println!();
-
-    music_organizer::check_inconsitent_total_tracks(&mut index, |ar, al, total_tracks| {
-        let msg = format!(
-            "{} - {} this album has different total track values:",
-            ar.name.as_str().yellow(),
-            al.name.as_str().yellow(),
-        );
-        let mut options = vec!["don't do anything", "remove the value", "enter a new value"];
-
-        let values: Vec<String> = total_tracks
-            .iter()
-            .map(|(songs, tt)| {
-                let mut tt_str = match tt {
-                    Some(n) => format!("{:02}:   ", n.to_string().yellow()),
-                    None => "none: ".yellow().to_string(),
-                };
-                let mut iter = songs.iter();
-
-                let s = iter.next().unwrap();
-                tt_str.push_str(&format!(
-                    "{:02} - {} - {}",
-                    &s.track.unwrap_or(0),
-                    &s.artist.opt_str(),
-                    &s.title.opt_str()
-                ));
-
-                for s in iter {
-                    tt_str.push_str(&format!(
-                        "\n      {:02} - {} - {}",
-                        &s.track.unwrap_or(0),
-                        &s.artist.opt_str(),
-                        &s.title.opt_str()
-                    ));
-                }
-
-                tt_str
-            })
-            .collect();
-
-        options.extend(values.iter().map(|s| s.as_str()));
-
-        let i = input_options_loop(&msg, &options);
-
-        match i {
-            0 => return None,
-            1 => return Some(0),
-            2 => loop {
-                let new_value = input_loop_parse::<u16>("enter a new value:");
-                let msg = format!("new value: '{}'", new_value);
-
-                let i = input_options_loop(&msg, &["ok", "reenter value", "dismiss"]);
-
-                match i {
-                    0 => return Some(new_value),
-                    1 => continue,
-                    _ => return None,
-                }
-            },
-            _ => return total_tracks[i - 3].1,
-        }
-    });
-
-    music_organizer::check_inconsitent_total_discs(&mut index, |ar, al, total_discs| {
-        let msg = format!(
-            "{} - {} this album has different total disc values:",
-            ar.name.as_str().yellow(),
-            al.name.as_str().yellow(),
-        );
-        let mut options = vec!["don't do anything", "remove the value", "enter a new value"];
-
-        let values: Vec<String> = total_discs
-            .iter()
-            .map(|(songs, tt)| {
-                let mut tt_str = match tt {
-                    Some(n) => format!("{:02}:   ", n.to_string().yellow()),
-                    None => "none: ".yellow().to_string(),
-                };
-                let mut iter = songs.iter();
-
-                let s = iter.next().unwrap();
-                tt_str.push_str(&format!(
-                    "{:02} - {} - {}",
-                    &s.disc.unwrap_or(0),
-                    &s.artist.opt_str(),
-                    &s.title.opt_str()
-                ));
-
-                for s in iter {
-                    tt_str.push_str(&format!(
-                        "\n      {:02} - {} - {}",
-                        &s.disc.unwrap_or(0),
-                        &s.artist.opt_str(),
-                        &s.title.opt_str()
-                    ));
-                }
-
-                tt_str
-            })
-            .collect();
-
-        options.extend(values.iter().map(|s| s.as_str()));
-
-        let i = input_options_loop(&msg, &options);
-
-        match i {
-            0 => return None,
-            1 => return Some(0),
-            2 => loop {
-                let new_value = input_loop_parse::<u16>("enter a new value:");
-                let msg = format!("new value: '{}'", new_value);
-
-                let i = input_options_loop(&msg, &["ok", "reenter value", "dismiss"]);
-
-                match i {
-                    0 => return Some(new_value),
-                    1 => continue,
-                    _ => return None,
-                }
-            },
-            _ => return total_discs[i - 3].1,
-        }
-    });
+    music_organizer::check_inconsitent_artists(&mut index, inconsitent_artists_dialog);
+    music_organizer::check_inconsitent_albums(&mut index, inconsitent_albums_dialog);
+    music_organizer::check_inconsitent_total_tracks(&mut index, inconsitent_total_tracks_dialog);
+    music_organizer::check_inconsitent_total_discs(&mut index, inconsitent_total_discs_dialog);
 
     println!();
 
@@ -453,6 +269,263 @@ fn main() {
     reset_print_verbose();
 
     println!("done");
+}
+
+fn inconsitent_artists_dialog(index: &MusicIndex, a: &Artist, b: &Artist) -> Option<String> {
+    fn print(index: &MusicIndex, artist: &Artist) {
+        println!("{}:", artist.name.as_str().yellow());
+        for (i, al) in artist.albums.iter().enumerate() {
+            if i == 10 {
+                println!("   {}", "...".green());
+                break;
+            }
+            println!("   {}:", al.name);
+            for (j, s) in al.songs.iter().map(|&si| &index.songs[si]).enumerate() {
+                if i >= 4 || j == 3 {
+                    println!("      {}", "...".green());
+                    break;
+                } else {
+                    println!(
+                        "      {:02} - {} - {}",
+                        s.track.unwrap_or(0),
+                        s.artist.opt_str(),
+                        s.title.opt_str()
+                    );
+                }
+            }
+        }
+    }
+    println!("These two artists are named similarly:");
+    print(index, a);
+    println!();
+    print(index, b);
+    println!();
+
+    let index = input_options_loop(
+        "",
+        &[
+            "don't do anything",
+            "rename first to second",
+            "rename second to first",
+            "enter new name",
+        ],
+    );
+
+    match index {
+        0 => return None,
+        1 => {
+            println!("renaming first to second");
+            return Some(a.name.clone());
+        }
+        2 => {
+            println!("renaming second to first");
+            return Some(b.name.clone());
+        }
+        3 => loop {
+            let new_name = input_loop("enter new name:", |_| true);
+            let msg = format!("new name: '{}'", new_name);
+
+            let i = input_options_loop(&msg, &["ok", "reenter name", "dismiss"]);
+
+            match i {
+                0 => return Some(new_name),
+                1 => continue,
+                _ => return None,
+            }
+        },
+        _ => unreachable!(),
+    }
+}
+
+fn inconsitent_albums_dialog(
+    index: &MusicIndex,
+    artist: &Artist,
+    a: &Album,
+    b: &Album,
+) -> Option<String> {
+    fn print(index: &MusicIndex, album: &Album) {
+        println!("   {}:", album.name.as_str().yellow());
+        for s in album.songs.iter().map(|&si| &index.songs[si]) {
+            println!(
+                "      {:02} - {} - {}",
+                s.track.unwrap_or(0),
+                s.artist.opt_str(),
+                s.title.opt_str()
+            );
+        }
+    }
+    println!("These two albums are named similarly:");
+    println!("{}:", artist.name);
+    print(index, a);
+    println!();
+    print(index, b);
+    println!();
+
+    let index = input_options_loop(
+        "",
+        &[
+            "don't do anything",
+            "rename first to second",
+            "rename second to first",
+            "enter new name",
+        ],
+    );
+
+    match index {
+        0 => return None,
+        1 => {
+            println!("renaming first to second");
+            return Some(a.name.clone());
+        }
+        2 => {
+            println!("renaming second to first");
+            return Some(b.name.clone());
+        }
+        3 => loop {
+            let new_name = input_loop("enter new name:", |_| true);
+            let msg = format!("new name: '{}'", new_name);
+
+            let i = input_options_loop(&msg, &["ok", "reenter name", "dismiss"]);
+
+            match i {
+                0 => return Some(new_name),
+                1 => continue,
+                2 => return None,
+                _ => unreachable!(),
+            }
+        },
+        _ => unreachable!(),
+    }
+}
+
+fn inconsitent_total_tracks_dialog(
+    artist: &Artist,
+    album: &Album,
+    total_tracks: Vec<(Vec<&Song>, Option<u16>)>,
+) -> Option<u16> {
+    let msg = format!(
+        "{} - {} this album has different total track values:",
+        artist.name.as_str().yellow(),
+        album.name.as_str().yellow(),
+    );
+    let mut options = vec!["don't do anything", "remove the value", "enter a new value"];
+
+    let values: Vec<String> = total_tracks
+        .iter()
+        .map(|(songs, tt)| {
+            let mut tt_str = match tt {
+                Some(n) => format!("{:02}:   ", n.to_string().yellow()),
+                None => "none: ".yellow().to_string(),
+            };
+            let mut iter = songs.iter();
+
+            let s = iter.next().unwrap();
+            tt_str.push_str(&format!(
+                "{:02} - {} - {}",
+                &s.track.unwrap_or(0),
+                &s.artist.opt_str(),
+                &s.title.opt_str()
+            ));
+
+            for s in iter {
+                tt_str.push_str(&format!(
+                    "\n      {:02} - {} - {}",
+                    &s.track.unwrap_or(0),
+                    &s.artist.opt_str(),
+                    &s.title.opt_str()
+                ));
+            }
+
+            tt_str
+        })
+        .collect();
+
+    options.extend(values.iter().map(|s| s.as_str()));
+
+    let i = input_options_loop(&msg, &options);
+
+    match i {
+        0 => return None,
+        1 => return Some(0),
+        2 => loop {
+            let new_value = input_loop_parse::<u16>("enter a new value:");
+            let msg = format!("new value: '{}'", new_value);
+
+            let i = input_options_loop(&msg, &["ok", "reenter value", "dismiss"]);
+
+            match i {
+                0 => return Some(new_value),
+                1 => continue,
+                _ => return None,
+            }
+        },
+        _ => return total_tracks[i - 3].1,
+    }
+}
+
+fn inconsitent_total_discs_dialog(
+    artist: &Artist,
+    album: &Album,
+    total_discs: Vec<(Vec<&Song>, Option<u16>)>,
+) -> Option<u16> {
+    let msg = format!(
+        "{} - {} this album has different total disc values:",
+        artist.name.as_str().yellow(),
+        album.name.as_str().yellow(),
+    );
+    let mut options = vec!["don't do anything", "remove the value", "enter a new value"];
+
+    let values: Vec<String> = total_discs
+        .iter()
+        .map(|(songs, tt)| {
+            let mut tt_str = match tt {
+                Some(n) => format!("{:02}:   ", n.to_string().yellow()),
+                None => "none: ".yellow().to_string(),
+            };
+            let mut iter = songs.iter();
+
+            let s = iter.next().unwrap();
+            tt_str.push_str(&format!(
+                "{:02} - {} - {}",
+                &s.disc.unwrap_or(0),
+                &s.artist.opt_str(),
+                &s.title.opt_str()
+            ));
+
+            for s in iter {
+                tt_str.push_str(&format!(
+                    "\n      {:02} - {} - {}",
+                    &s.disc.unwrap_or(0),
+                    &s.artist.opt_str(),
+                    &s.title.opt_str()
+                ));
+            }
+
+            tt_str
+        })
+        .collect();
+
+    options.extend(values.iter().map(|s| s.as_str()));
+
+    let i = input_options_loop(&msg, &options);
+
+    match i {
+        0 => return None,
+        1 => return Some(0),
+        2 => loop {
+            let new_value = input_loop_parse::<u16>("enter a new value:");
+            let msg = format!("new value: '{}'", new_value);
+
+            let i = input_options_loop(&msg, &["ok", "reenter value", "dismiss"]);
+
+            match i {
+                0 => return Some(new_value),
+                1 => continue,
+                _ => return None,
+            }
+        },
+        _ => return total_discs[i - 3].1,
+    }
 }
 
 #[inline]

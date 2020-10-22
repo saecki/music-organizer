@@ -407,7 +407,7 @@ impl<'a> Iterator for ReadMusicIndexIter<'a> {
 
 pub fn check_inconsitent_artists(
     index: &mut MusicIndex,
-    f: impl Fn(&MusicIndex, &Artist, &Artist) -> Option<String>,
+    f: fn(&MusicIndex, &Artist, &Artist) -> Option<String>,
 ) {
     let mut offset = 1;
     for ar1 in index.artists.iter() {
@@ -428,14 +428,14 @@ pub fn check_inconsitent_artists(
 
 pub fn check_inconsitent_albums(
     index: &mut MusicIndex,
-    f: impl Fn(&Artist, &Album, &Album) -> Option<String>,
+    f: fn(&MusicIndex, &Artist, &Album, &Album) -> Option<String>,
 ) {
     for ar in index.artists.iter() {
         let mut offset = 1;
         for al1 in ar.albums.iter() {
             for al2 in ar.albums.iter().skip(offset) {
                 if al1.name.eq_ignore_ascii_case(&al2.name) {
-                    if let Some(name) = f(ar, al1, al2) {
+                    if let Some(name) = f(index, ar, al1, al2) {
                         //TODO: update albums
                         println!(
                             "update album {} - {:?}/{:?} to {:?}",
@@ -451,7 +451,7 @@ pub fn check_inconsitent_albums(
 
 pub fn check_inconsitent_total_tracks(
     index: &MusicIndex,
-    f: impl Fn(&Artist, &Album, Vec<(Vec<&Song>, Option<u16>)>) -> Option<u16>,
+    f: fn(&Artist, &Album, Vec<(Vec<&Song>, Option<u16>)>) -> Option<u16>,
 ) {
     for ar in index.artists.iter() {
         for al in ar.albums.iter() {
@@ -483,7 +483,7 @@ pub fn check_inconsitent_total_tracks(
 
 pub fn check_inconsitent_total_discs(
     index: &MusicIndex,
-    f: impl Fn(&Artist, &Album, Vec<(Vec<&Song>, Option<u16>)>) -> Option<u16>,
+    f: fn(&Artist, &Album, Vec<(Vec<&Song>, Option<u16>)>) -> Option<u16>,
 ) {
     for ar in index.artists.iter() {
         for al in ar.albums.iter() {
