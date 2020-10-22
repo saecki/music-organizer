@@ -1,6 +1,6 @@
 use clap::{App, Arg, Shell};
 use colorful::Colorful;
-use music_organizer::{Changes, FileOpType, MusicIndex, OptionAsStr};
+use music_organizer::{Album, Artist, Changes, FileOpType, MusicIndex, OptionAsStr, Song};
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::exit;
@@ -148,17 +148,42 @@ fn main() {
     println!("============================================================");
     println!("# Checking");
     println!("============================================================");
-    music_organizer::check_inconsitent_artists(&mut index, |a, b| {
-        let msg = format!(
-            "These two artists are named similarly:\n{}\n{}",
-            a.name, b.name,
-        );
+    music_organizer::check_inconsitent_artists(&mut index, |i, a, b| {
+        fn print(artist: &Artist, ind: &MusicIndex) {
+            println!("{}:", artist.name.as_str().yellow());
+            for (i, al) in artist.albums.iter().enumerate() {
+                if i == 10 {
+                    println!("   {}", "...".green());
+                    break;
+                }
+                println!("   {}:", al.name);
+                for (j, s) in al.songs.iter().map(|&si| &ind.songs[si]).enumerate() {
+                    if i >= 4 || j == 3 {
+                        println!("      {}", "...".green());
+                        break;
+                    } else {
+                        println!(
+                            "      {:02} - {} - {}",
+                            s.track.unwrap_or(0),
+                            s.artist.opt_str(),
+                            s.title.opt_str()
+                        );
+                    }
+                }
+            }
+        }
+        println!("These two artists are named similarly:");
+        print(a, i);
+        println!();
+        print(b, i);
+        println!();
+
         let index = input_options_loop(
-            &msg,
+            "",
             &[
                 "don't do anything",
-                "merge using first",
-                "merge using second",
+                "rename first to second",
+                "rename second to first",
                 "enter new name",
             ],
         );
@@ -193,18 +218,17 @@ fn main() {
     music_organizer::check_inconsitent_total_tracks(&mut index, |ar, al, total_tracks| {
         let msg = format!(
             "{} - {} this album has different total track values:",
-            ar.name,
-            al.name.opt_str(),
+            ar.name.as_str().yellow(),
+            al.name.as_str().yellow(),
         );
-
         let mut options = vec!["don't do anything", "remove the value", "enter a new value"];
 
         let values: Vec<String> = total_tracks
             .iter()
             .map(|(songs, tt)| {
                 let mut tt_str = match tt {
-                    Some(n) => format!("{:02}:   ", n),
-                    None => "none: ".to_string(),
+                    Some(n) => format!("{:02}:   ", n.to_string().yellow()),
+                    None => "none: ".yellow().to_string(),
                 };
                 let mut iter = songs.iter();
 
@@ -251,6 +275,68 @@ fn main() {
             _ => return total_tracks[i - 3].1,
         }
     });
+
+    music_organizer::check_inconsitent_total_discs(&mut index, |ar, al, total_discs| {
+        let msg = format!(
+            "{} - {} this album has different total disc values:",
+            ar.name.as_str().yellow(),
+            al.name.as_str().yellow(),
+        );
+        let mut options = vec!["don't do anything", "remove the value", "enter a new value"];
+
+        let values: Vec<String> = total_discs
+            .iter()
+            .map(|(songs, tt)| {
+                let mut tt_str = match tt {
+                    Some(n) => format!("{:02}:   ", n.to_string().yellow()),
+                    None => "none: ".yellow().to_string(),
+                };
+                let mut iter = songs.iter();
+
+                let s = iter.next().unwrap();
+                tt_str.push_str(&format!(
+                    "{:02} - {} - {}",
+                    &s.disc.unwrap_or(0),
+                    &s.artist.opt_str(),
+                    &s.title.opt_str()
+                ));
+
+                for s in iter {
+                    tt_str.push_str(&format!(
+                        "\n      {:02} - {} - {}",
+                        &s.disc.unwrap_or(0),
+                        &s.artist.opt_str(),
+                        &s.title.opt_str()
+                    ));
+                }
+
+                tt_str
+            })
+            .collect();
+
+        options.extend(values.iter().map(|s| s.as_str()));
+
+        let i = input_options_loop(&msg, &options);
+
+        match i {
+            0 => return None,
+            1 => return Some(0),
+            2 => loop {
+                let new_value = input_loop_parse::<u16>("enter a new value:");
+                let msg = format!("new value: '{}'", new_value);
+
+                let i = input_options_loop(&msg, &["ok", "reenter value", "dismiss"]);
+
+                match i {
+                    0 => return Some(new_value),
+                    1 => continue,
+                    _ => return None,
+                }
+            },
+            _ => return total_discs[i - 3].1,
+        }
+    });
+
     println!();
 
     let changes = Changes::from(&index, &output_dir);
@@ -421,7 +507,9 @@ fn input_loop_parse<T: FromStr + Default>(str: &str) -> T {
 
 fn input_options_loop(str: &str, options: &[&str]) -> usize {
     loop {
-        println!("{}", str);
+        if !str.is_empty() {
+            println!("{}", str);
+        }
         let mut input = String::with_capacity(2);
 
         for (i, s) in options.iter().enumerate() {

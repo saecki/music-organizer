@@ -10,11 +10,12 @@ const MUSIC_FILE_EXTENSIONS: [&str; 5] = ["m4a", "mp3", "m4b", "m4p", "m4v"];
 pub struct Artist {
     pub name: String,
     pub albums: Vec<Album>,
+    pub singles: Vec<usize>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Album {
-    pub name: Option<String>,
+    pub name: String,
     pub songs: Vec<usize>,
 }
 
@@ -348,42 +349,54 @@ impl<'a> Iterator for ReadMusicIndexIter<'a> {
                 return Some(m);
             };
 
-            if self.index.artists.is_empty() {
-                self.index.artists.push(Artist {
-                    name: artist,
-                    albums: vec![Album {
-                        name: m.album.clone(),
-                        songs: vec![song_index],
-                    }],
-                });
-
-                return Some(m);
-            }
+            let single_album_name = m.title.as_ref().map(|t| format!("{} - single", &t));
+            let is_single = match (&m.album, &single_album_name) {
+                (None, _) => true,
+                (Some(al_name), Some(s_al_name)) => {
+                    al_name.eq_ignore_ascii_case(s_al_name) || al_name.is_empty()
+                }
+                _ => false,
+            };
 
             for ar in &mut self.index.artists {
                 if ar.name == artist {
-                    for al in &mut ar.albums {
-                        if al.name == m.album {
-                            al.songs.push(song_index);
-                            return Some(m);
+                    if is_single {
+                        ar.singles.push(song_index);
+                    } else {
+                        for al in &mut ar.albums {
+                            if &al.name == m.album.opt_str() {
+                                al.songs.push(song_index);
+                                return Some(m);
+                            }
                         }
-                    }
 
-                    ar.albums.push(Album {
-                        name: m.album.clone(),
-                        songs: vec![song_index],
-                    });
+                        ar.albums.push(Album {
+                            // Has to be Some otherwise would be a single
+                            name: m.album.clone().unwrap(),
+                            songs: vec![song_index],
+                        });
+                    }
                     return Some(m);
                 }
             }
 
-            self.index.artists.push(Artist {
-                name: artist,
-                albums: vec![Album {
-                    name: m.album.clone(),
-                    songs: vec![song_index],
-                }],
-            });
+            if is_single {
+                self.index.artists.push(Artist {
+                    name: artist,
+                    singles: vec![song_index],
+                    albums: Vec::new(),
+                });
+            } else {
+                self.index.artists.push(Artist {
+                    name: artist,
+                    singles: Vec::new(),
+                    albums: vec![Album {
+                        // Has to be Some otherwise would be a single
+                        name: m.album.clone().unwrap(),
+                        songs: vec![song_index],
+                    }],
+                });
+            }
 
             return Some(m);
         }
@@ -394,13 +407,13 @@ impl<'a> Iterator for ReadMusicIndexIter<'a> {
 
 pub fn check_inconsitent_artists(
     index: &mut MusicIndex,
-    f: impl Fn(&Artist, &Artist) -> Option<String>,
+    f: impl Fn(&MusicIndex, &Artist, &Artist) -> Option<String>,
 ) {
     let mut offset = 1;
     for ar1 in index.artists.iter() {
         for ar2 in index.artists.iter().skip(offset) {
             if ar1.name.eq_ignore_ascii_case(&ar2.name) {
-                if let Some(name) = f(ar1, ar2) {
+                if let Some(name) = f(index, ar1, ar2) {
                     //TODO: update artists
                     println!(
                         "update artists {} and {} to {:?}",
@@ -421,15 +434,13 @@ pub fn check_inconsitent_albums(
         let mut offset = 1;
         for al1 in ar.albums.iter() {
             for al2 in ar.albums.iter().skip(offset) {
-                if let (Some(al1_name), Some(al2_name)) = (&al1.name, &al2.name) {
-                    if al1_name.eq_ignore_ascii_case(&al2_name) {
-                        if let Some(name) = f(ar, al1, al2) {
-                            //TODO: update albums
-                            println!(
-                                "update album {} - {:?}/{:?} to {:?}",
-                                &ar.name, &al1.name, &al2.name, name,
-                            );
-                        }
+                if al1.name.eq_ignore_ascii_case(&al2.name) {
+                    if let Some(name) = f(ar, al1, al2) {
+                        //TODO: update albums
+                        println!(
+                            "update album {} - {:?}/{:?} to {:?}",
+                            &ar.name, &al1.name, &al2.name, name,
+                        );
                     }
                 }
             }
@@ -472,25 +483,29 @@ pub fn check_inconsitent_total_tracks(
 
 pub fn check_inconsitent_total_discs(
     index: &MusicIndex,
-    f: impl Fn(&Artist, &Album, Vec<Option<u16>>) -> Option<u16>,
+    f: impl Fn(&Artist, &Album, Vec<(Vec<&Song>, Option<u16>)>) -> Option<u16>,
 ) {
     for ar in index.artists.iter() {
         for al in ar.albums.iter() {
-            let mut total_discs: Vec<Option<u16>> = al
-                .songs
-                .iter()
-                .map(|&si| &index.songs[si])
-                .map(|s| s.total_discs)
-                .collect();
+            let mut total_discs: Vec<(Vec<&Song>, Option<u16>)> = Vec::new();
 
-            total_discs.sort();
-            total_discs.dedup();
+            'songs: for s in al.songs.iter().map(|&si| &index.songs[si]) {
+                for (songs, tt) in total_discs.iter_mut() {
+                    if *tt == s.total_discs {
+                        songs.push(s);
+                        continue 'songs;
+                    }
+                }
+
+                total_discs.push((vec![s], s.total_discs));
+            }
+
             if total_discs.len() > 1 {
-                if let Some(d) = f(ar, al, total_discs) {
+                if let Some(t) = f(ar, al, total_discs) {
                     //TODO: update tags
                     println!(
-                        "update track total of album {} - {:?} to {:?}",
-                        ar.name, al.name, d
+                        "update disc total of album {} - {:?} to {:?}",
+                        ar.name, al.name, t
                     );
                 }
             }
@@ -523,25 +538,31 @@ impl Changes {
                 });
             }
 
-            for al in ar.albums.iter() {
-                let single_album_name = index.songs[al.songs[0]]
-                    .title
-                    .as_ref()
-                    .map(|t| format!("{} - single", &t));
-                let is_single = match (&al.name, &single_album_name) {
-                    (None, _) => true,
-                    (Some(al_name), Some(s_al_name)) => {
-                        al_name.eq_ignore_ascii_case(s_al_name) && al.songs.len() == 1
-                            || al_name.is_empty()
-                    }
-                    _ => false,
-                };
-                let al_dir = match &al.name {
-                    Some(s) => ar_dir.join(valid_os_string(&s)),
-                    None => ar_dir.clone(),
-                };
+            for song in ar.singles.iter().map(|&si| &index.songs[si]) {
+                let extension = song.current_file.extension().unwrap();
+                let mut file_name = OsString::with_capacity(
+                    4 + song.artist.len() + song.title.len() + extension.len(),
+                );
 
-                if !is_single && !al_dir.exists() {
+                file_name.push(valid_os_string(song.artist.opt_str()));
+                file_name.push(" - ");
+                file_name.push(valid_os_string(song.title.opt_str()));
+                file_name.push(".");
+                file_name.push(extension);
+
+                let new_file = ar_dir.join(file_name);
+                if new_file != song.current_file {
+                    file_moves.push(FileOperation {
+                        old: song.current_file.clone(),
+                        new: new_file,
+                    });
+                }
+            }
+
+            for al in ar.albums.iter() {
+                let al_dir = ar_dir.join(valid_os_string(&al.name));
+
+                if !al_dir.exists() {
                     dir_creations.push(DirCreation {
                         path: al_dir.clone(),
                     });
@@ -549,40 +570,23 @@ impl Changes {
 
                 for song in al.songs.iter().map(|&si| &index.songs[si]) {
                     let extension = song.current_file.extension().unwrap();
+                    let mut file_name = OsString::with_capacity(
+                        9 + song.artist.len() + song.title.len() + extension.len(),
+                    );
 
-                    let new_file;
-                    if is_single {
-                        let mut file_name = OsString::with_capacity(
-                            4 + song.artist.len() + song.title.len() + extension.len(),
-                        );
+                    let track = match song.track {
+                        Some(n) => n,
+                        _ => 0,
+                    };
 
-                        file_name.push(valid_os_string(song.artist.opt_str()));
-                        file_name.push(" - ");
-                        file_name.push(valid_os_string(song.title.opt_str()));
-                        file_name.push(".");
-                        file_name.push(extension);
+                    file_name.push(format!("{:02} - ", track));
+                    file_name.push(valid_os_string(song.artist.opt_str()));
+                    file_name.push(" - ");
+                    file_name.push(valid_os_string(song.title.opt_str()));
+                    file_name.push(".");
+                    file_name.push(extension);
 
-                        new_file = ar_dir.join(file_name);
-                    } else {
-                        let mut file_name = OsString::with_capacity(
-                            9 + song.artist.len() + song.title.len() + extension.len(),
-                        );
-
-                        let track = match song.track {
-                            Some(n) => n,
-                            _ => 0,
-                        };
-
-                        file_name.push(format!("{:02} - ", track));
-                        file_name.push(valid_os_string(song.artist.opt_str()));
-                        file_name.push(" - ");
-                        file_name.push(valid_os_string(song.title.opt_str()));
-                        file_name.push(".");
-                        file_name.push(extension);
-
-                        new_file = al_dir.join(file_name);
-                    }
-
+                    let new_file = al_dir.join(file_name);
                     if new_file != song.current_file {
                         file_moves.push(FileOperation {
                             old: song.current_file.clone(),
