@@ -1,6 +1,6 @@
 use std::ffi::{OsStr, OsString};
 use std::iter::Iterator;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::{fs, io};
 use walkdir::WalkDir;
 
@@ -28,6 +28,8 @@ pub struct Song {
     pub artist: Option<String>,
     pub title: Option<String>,
     pub current_file: PathBuf,
+    pub new_file: Option<PathBuf>,
+    pub tag_update: Option<TagUpdate>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -101,14 +103,13 @@ impl DirCreation {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct FileOperation {
-    pub old: PathBuf,
-    pub new: PathBuf,
-    //pub tag_update: Option<TagUpdate>,
+#[derive(Clone, Debug, PartialEq)]
+pub struct FileOperation<'a> {
+    pub old: &'a Path,
+    pub new: &'a Path,
 }
 
-impl FileOperation {
+impl<'a> FileOperation<'a> {
     pub fn execute(&self, op_type: FileOpType) -> Result<(), io::Error> {
         match op_type {
             FileOpType::Copy => fs::copy(&self.old, &self.new).map(|_| ()),
@@ -336,6 +337,7 @@ impl<'a> Iterator for ReadMusicIndexIter<'a> {
                 artist: m.artist.clone(),
                 title: m.title.clone(),
                 current_file: p,
+                ..Song::default()
             };
 
             self.index.songs.push(song);
@@ -516,13 +518,11 @@ pub fn check_inconsitent_total_discs(
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Changes {
     pub dir_creations: Vec<DirCreation>,
-    pub file_operations: Vec<FileOperation>,
 }
 
 impl Changes {
-    pub fn from(index: &MusicIndex, output_dir: &PathBuf) -> Self {
+    pub fn from(index: &mut MusicIndex, output_dir: &PathBuf) -> Self {
         let mut dir_creations = Vec::new();
-        let mut file_moves = Vec::with_capacity(index.songs.len() / 10);
 
         if !output_dir.exists() {
             dir_creations.push(DirCreation {
@@ -538,7 +538,8 @@ impl Changes {
                 });
             }
 
-            for song in ar.singles.iter().map(|&si| &index.songs[si]) {
+            for &si in ar.singles.iter() {
+                let song = &mut index.songs[si];
                 let extension = song.current_file.extension().unwrap();
                 let mut file_name = OsString::with_capacity(
                     4 + song.artist.len() + song.title.len() + extension.len(),
@@ -552,10 +553,7 @@ impl Changes {
 
                 let new_file = ar_dir.join(file_name);
                 if new_file != song.current_file {
-                    file_moves.push(FileOperation {
-                        old: song.current_file.clone(),
-                        new: new_file,
-                    });
+                    song.new_file = Some(new_file);
                 }
             }
 
@@ -568,7 +566,8 @@ impl Changes {
                     });
                 }
 
-                for song in al.songs.iter().map(|&si| &index.songs[si]) {
+                for &si in al.songs.iter() {
+                    let song = &mut index.songs[si];
                     let extension = song.current_file.extension().unwrap();
                     let mut file_name = OsString::with_capacity(
                         9 + song.artist.len() + song.title.len() + extension.len(),
@@ -588,10 +587,7 @@ impl Changes {
 
                     let new_file = al_dir.join(file_name);
                     if new_file != song.current_file {
-                        file_moves.push(FileOperation {
-                            old: song.current_file.clone(),
-                            new: new_file,
-                        });
+                        song.new_file = Some(new_file);
                     }
                 }
             }
@@ -604,34 +600,22 @@ impl Changes {
                     path: unknown_dir.clone(),
                 });
             }
-            for si in &index.unknown {
-                let song = &index.songs[*si];
-                let new_file = unknown_dir.join(song.current_file.file_name().unwrap());
+            for &si in index.unknown.iter() {
+                let song = &mut index.songs[si];
 
-                file_moves.push(FileOperation {
-                    old: song.current_file.clone(),
-                    new: new_file,
-                });
+                let new_file = unknown_dir.join(song.current_file.file_name().unwrap());
+                song.new_file = Some(new_file);
             }
         }
 
-        Self {
-            dir_creations,
-            file_operations: file_moves,
-        }
+        Self { dir_creations }
     }
 
-    pub fn write(&self, op_type: FileOpType) -> Vec<io::Error> {
+    pub fn write(&self) -> Vec<io::Error> {
         let mut errors = Vec::new();
 
         for d in &self.dir_creations {
             if let Err(e) = d.execute() {
-                errors.push(e);
-            }
-        }
-
-        for f in &self.file_operations {
-            if let Err(e) = f.execute(op_type) {
                 errors.push(e);
             }
         }
@@ -641,10 +625,6 @@ impl Changes {
 
     pub fn dir_creation_iter(&self) -> DirCreationIter {
         DirCreationIter::from(self)
-    }
-
-    pub fn file_operation_iter(&self, op_type: FileOpType) -> FileOperationIter {
-        FileOperationIter::from(self, op_type)
     }
 }
 
@@ -672,21 +652,30 @@ impl<'a> Iterator for DirCreationIter<'a> {
 }
 
 pub struct FileOperationIter<'a> {
-    iter: Box<dyn Iterator<Item = &'a FileOperation> + 'a>,
+    iter: Box<dyn Iterator<Item = FileOperation<'a>> + 'a>,
     op_type: FileOpType,
 }
 
-impl<'a> FileOperationIter<'a> {
-    pub fn from(changes: &'a Changes, op_type: FileOpType) -> Self {
+impl<'a, 'b> FileOperationIter<'a> {
+    pub fn from(index: &'a MusicIndex, op_type: FileOpType) -> Self {
         Self {
-            iter: Box::new(changes.file_operations.iter()),
+            iter: Box::new(
+                index
+                    .songs
+                    .iter()
+                    .filter(|s| s.new_file.is_some())
+                    .map(|s| FileOperation {
+                        old: s.current_file.as_ref(),
+                        new: s.new_file.as_ref().unwrap(),
+                    }),
+            ),
             op_type,
         }
     }
 }
 
 impl<'a> Iterator for FileOperationIter<'a> {
-    type Item = (&'a FileOperation, Result<(), io::Error>);
+    type Item = (FileOperation<'a>, Result<(), io::Error>);
 
     fn next(&mut self) -> Option<Self::Item> {
         let f = self.iter.next()?;

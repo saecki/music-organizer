@@ -404,7 +404,7 @@ fn inconsitent_total_tracks_dialog(
     total_tracks: Vec<(Vec<&Song>, Option<u16>)>,
 ) -> Option<u16> {
     let msg = format!(
-        "{} - {} this album has different total track values:",
+        "{} - {} this album has different total tracks values:",
         artist.name.as_str().yellow(),
         album.name.as_str().yellow(),
     );
@@ -469,7 +469,7 @@ fn inconsitent_total_discs_dialog(
     total_discs: Vec<(Vec<&Song>, Option<u16>)>,
 ) -> Option<u16> {
     let msg = format!(
-        "{} - {} this album has different total disc values:",
+        "{} - {} this album has different total discs values:",
         artist.name.as_str().yellow(),
         album.name.as_str().yellow(),
     );
