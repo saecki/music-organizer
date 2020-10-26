@@ -74,10 +74,10 @@ impl Metadata {
             "m4a" | "m4b" | "m4p" | "m4v" => {
                 if let Ok(tag) = mp4ameta::Tag::read_from_path(&path) {
                     return Self {
-                        track: zero_none(tag.track_number()),
-                        total_tracks: zero_none(tag.total_tracks()),
-                        disc: zero_none(tag.disc_number()),
-                        total_discs: zero_none(tag.total_discs()),
+                        track: tag.track_number(),
+                        total_tracks: tag.total_tracks(),
+                        disc: tag.disc_number(),
+                        total_discs: tag.total_discs(),
                         artist: tag.artist().map(|s| s.to_string()),
                         album_artist: tag.album_artist().map(|s| s.to_string()),
                         album: tag.album().map(|s| s.to_string()),
@@ -227,23 +227,29 @@ impl TagUpdate {
                                 false => tag.set_title(t),
                             }
                         }
-                        match (self.meta.track, self.meta.total_tracks) {
-                            (Some(tn), Some(tt)) => match tn == 0 && tt == 0 {
-                                true => tag.remove_track(),
-                                false => tag.set_track(tn, tt),
-                            },
-                            (Some(tn), None) => tag.set_track_number(tn),
-                            (None, Some(tt)) => tag.set_total_tracks(tt),
-                            (None, None) => (),
+                        if let Some(t) = self.meta.track {
+                            match t == 0 {
+                                true => tag.remove_track_number(),
+                                false => tag.set_track_number(t),
+                            }
                         }
-                        match (self.meta.disc, self.meta.total_discs) {
-                            (Some(dn), Some(dt)) => match dn == 0 && dt == 0 {
-                                true => tag.remove_disc(),
-                                false => tag.set_disc(dn, dt),
-                            },
-                            (Some(dn), None) => tag.set_disc_number(dn),
-                            (None, Some(dt)) => tag.set_total_discs(dt),
-                            (None, None) => (),
+                        if let Some(t) = self.meta.total_tracks {
+                            match t == 0 {
+                                true => tag.remove_total_tracks(),
+                                false => tag.set_total_tracks(t),
+                            }
+                        }
+                        if let Some(t) = self.meta.disc {
+                            match t == 0 {
+                                true => tag.remove_disc_number(),
+                                false => tag.set_disc_number(t),
+                            }
+                        }
+                        if let Some(t) = self.meta.total_discs {
+                            match t == 0 {
+                                true => tag.remove_total_discs(),
+                                false => tag.set_total_discs(t),
+                            }
                         }
 
                         tag
@@ -611,7 +617,7 @@ impl Changes {
         Self { dir_creations }
     }
 
-    pub fn write(&self) -> Vec<io::Error> {
+    pub fn write(&self, op_type: FileOpType) -> Vec<io::Error> {
         let mut errors = Vec::new();
 
         for d in &self.dir_creations {
