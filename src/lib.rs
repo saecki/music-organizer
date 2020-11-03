@@ -1,84 +1,13 @@
+mod meta;
+
+use crate::meta::{Album, Artist, Metadata, Song};
 use std::ffi::{OsStr, OsString};
 use std::iter::Iterator;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::{error, fs, io};
 use walkdir::WalkDir;
 
 const MUSIC_FILE_EXTENSIONS: [&str; 5] = ["m4a", "mp3", "m4b", "m4p", "m4v"];
-
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct Artist {
-    pub name: String,
-    pub albums: Vec<Album>,
-    pub singles: Vec<usize>,
-}
-
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct Album {
-    pub name: String,
-    pub songs: Vec<usize>,
-}
-
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct Song {
-    pub track: Option<u16>,
-    pub total_tracks: Option<u16>,
-    pub disc: Option<u16>,
-    pub total_discs: Option<u16>,
-    pub artist: Option<String>,
-    pub title: Option<String>,
-    pub path: PathBuf,
-}
-
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct Metadata {
-    pub track: Option<u16>,
-    pub total_tracks: Option<u16>,
-    pub disc: Option<u16>,
-    pub total_discs: Option<u16>,
-    pub artist: Option<String>,
-    pub album_artist: Option<String>,
-    pub album: Option<String>,
-    pub title: Option<String>,
-}
-
-impl Metadata {
-    pub fn read_from(path: &PathBuf) -> Self {
-        match path.extension().unwrap().to_str().unwrap() {
-            "mp3" => {
-                if let Ok(tag) = id3::Tag::read_from_path(&path) {
-                    return Self {
-                        track: zero_none(tag.track().map(|u| u as u16)),
-                        total_tracks: zero_none(tag.total_tracks().map(|u| u as u16)),
-                        disc: zero_none(tag.disc().map(|u| u as u16)),
-                        total_discs: zero_none(tag.total_discs().map(|u| u as u16)),
-                        artist: tag.artist().map(|s| s.to_string()),
-                        album_artist: tag.album_artist().map(|s| s.to_string()),
-                        album: tag.album().map(|s| s.to_string()),
-                        title: tag.title().map(|s| s.to_string()),
-                    };
-                }
-            }
-            "m4a" | "m4b" | "m4p" | "m4v" => {
-                if let Ok(tag) = mp4ameta::Tag::read_from_path(&path) {
-                    return Self {
-                        track: tag.track_number(),
-                        total_tracks: tag.total_tracks(),
-                        disc: tag.disc_number(),
-                        total_discs: tag.total_discs(),
-                        artist: tag.artist().map(|s| s.to_string()),
-                        album_artist: tag.album_artist().map(|s| s.to_string()),
-                        album: tag.album().map(|s| s.to_string()),
-                        title: tag.title().map(|s| s.to_string()),
-                    };
-                }
-            }
-            _ => (),
-        }
-
-        Self::default()
-    }
-}
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct DirCreation {
@@ -419,7 +348,7 @@ pub struct Changes {
 }
 
 impl Changes {
-    pub fn update(&mut self, path: &PathBuf, f: impl FnOnce(&mut FileOperation)) {
+    pub fn update(&mut self, path: &Path, f: impl FnOnce(&mut FileOperation)) {
         match self.file_operations.iter_mut().find(|f| &f.old == path) {
             Some(fo) => f(fo),
             None => {
@@ -435,7 +364,7 @@ impl Changes {
         }
     }
 
-    pub fn update_tag(&mut self, path: &PathBuf, f: impl FnOnce(&mut TagUpdate)) {
+    pub fn update_tag(&mut self, path: &Path, f: impl FnOnce(&mut TagUpdate)) {
         self.update(path, |fo| match &mut fo.tag_update {
             Some(tu) => f(tu),
             None => {
@@ -541,7 +470,7 @@ impl Changes {
                 if total_tracks.len() > 1 {
                     if let Some(t) = f(ar, al, total_tracks) {
                         for song in al.songs.iter().map(|&si| &index.songs[si]) {
-                            if song.total_tracks != zero_none(Some(t)) {
+                            if song.total_tracks != meta::zero_none(Some(t)) {
                                 self.update_tag(&song.path, |tu| tu.meta.total_tracks = Some(t));
                             }
                         }
@@ -574,7 +503,7 @@ impl Changes {
                 if total_discs.len() > 1 {
                     if let Some(t) = f(ar, al, total_discs) {
                         for song in al.songs.iter().map(|&si| &index.songs[si]) {
-                            if song.total_discs != zero_none(Some(t)) {
+                            if song.total_discs != meta::zero_none(Some(t)) {
                                 self.update_tag(&song.path, |tu| tu.meta.total_discs = Some(t));
                             }
                         }
@@ -677,6 +606,12 @@ impl Changes {
             }
         }
 
+        for f in &self.file_operations {
+            if let Err(e) = f.execute(op_type) {
+                errors.push(e);
+            }
+        }
+
         errors
     }
 
@@ -705,40 +640,6 @@ impl<'a> Iterator for DirCreationIter<'a> {
         let r = d.execute();
 
         Some((d, r))
-    }
-}
-
-pub struct FileOperationIter<'a> {
-    iter: Box<dyn Iterator<Item = FileOperation<'a>> + 'a>,
-    op_type: FileOpType,
-}
-
-impl<'a, 'b> FileOperationIter<'a> {
-    pub fn from(index: &'a MusicIndex, op_type: FileOpType) -> Self {
-        Self {
-            iter: Box::new(
-                index
-                    .songs
-                    .iter()
-                    .filter(|s| s.new_file.is_some())
-                    .map(|s| FileOperation {
-                        old: s.current_file.as_ref(),
-                        new: s.new_file.as_ref().unwrap(),
-                    }),
-            ),
-            op_type,
-        }
-    }
-}
-
-impl<'a> Iterator for FileOperationIter<'a> {
-    type Item = (&'a FileOperation, Result<(), Box<dyn error::Error>>);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let f = self.iter.next()?;
-        let r = f.execute(self.op_type);
-
-        Some((f, r))
     }
 }
 
@@ -804,15 +705,4 @@ fn is_music_extension(s: &OsStr) -> bool {
     }
 
     false
-}
-
-#[inline]
-fn zero_none(n: Option<u16>) -> Option<u16> {
-    match n {
-        Some(n) => match n == 0 {
-            true => None,
-            false => Some(n),
-        },
-        None => None,
-    }
 }
