@@ -1,84 +1,13 @@
+pub mod meta;
+
+use crate::meta::{Album, Artist, Metadata, Song};
 use std::ffi::{OsStr, OsString};
 use std::iter::Iterator;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::{error, fs, io};
 use walkdir::WalkDir;
 
 const MUSIC_FILE_EXTENSIONS: [&str; 5] = ["m4a", "mp3", "m4b", "m4p", "m4v"];
-
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct Artist {
-    pub name: String,
-    pub albums: Vec<Album>,
-    pub singles: Vec<usize>,
-}
-
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct Album {
-    pub name: String,
-    pub songs: Vec<usize>,
-}
-
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct Song {
-    pub track: Option<u16>,
-    pub total_tracks: Option<u16>,
-    pub disc: Option<u16>,
-    pub total_discs: Option<u16>,
-    pub artist: Option<String>,
-    pub title: Option<String>,
-    pub path: PathBuf,
-}
-
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct Metadata {
-    pub track: Option<u16>,
-    pub total_tracks: Option<u16>,
-    pub disc: Option<u16>,
-    pub total_discs: Option<u16>,
-    pub artist: Option<String>,
-    pub album_artist: Option<String>,
-    pub album: Option<String>,
-    pub title: Option<String>,
-}
-
-impl Metadata {
-    pub fn read_from(path: &PathBuf) -> Self {
-        match path.extension().unwrap().to_str().unwrap() {
-            "mp3" => {
-                if let Ok(tag) = id3::Tag::read_from_path(&path) {
-                    return Self {
-                        track: zero_none(tag.track().map(|u| u as u16)),
-                        total_tracks: zero_none(tag.total_tracks().map(|u| u as u16)),
-                        disc: zero_none(tag.disc().map(|u| u as u16)),
-                        total_discs: zero_none(tag.total_discs().map(|u| u as u16)),
-                        artist: tag.artist().map(|s| s.to_string()),
-                        album_artist: tag.album_artist().map(|s| s.to_string()),
-                        album: tag.album().map(|s| s.to_string()),
-                        title: tag.title().map(|s| s.to_string()),
-                    };
-                }
-            }
-            "m4a" | "m4b" | "m4p" | "m4v" => {
-                if let Ok(tag) = mp4ameta::Tag::read_from_path(&path) {
-                    return Self {
-                        track: tag.track_number(),
-                        total_tracks: tag.total_tracks(),
-                        disc: tag.disc_number(),
-                        total_discs: tag.total_discs(),
-                        artist: tag.artist().map(|s| s.to_string()),
-                        album_artist: tag.album_artist().map(|s| s.to_string()),
-                        album: tag.album().map(|s| s.to_string()),
-                        title: tag.title().map(|s| s.to_string()),
-                    };
-                }
-            }
-            _ => (),
-        }
-
-        Self::default()
-    }
-}
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct DirCreation {
@@ -169,27 +98,27 @@ impl TagUpdate {
                             }
                         }
                         if let Some(t) = self.meta.track {
-                            match t == 0 {
-                                true => tag.remove_track(),
-                                false => tag.set_track(t as u32),
+                            match t {
+                                0 => tag.remove_track(),
+                                _ => tag.set_track(t as u32),
                             }
                         }
                         if let Some(t) = self.meta.total_tracks {
-                            match t == 0 {
-                                true => tag.remove_total_tracks(),
-                                false => tag.set_total_tracks(t as u32),
+                            match t {
+                                0 => tag.remove_total_tracks(),
+                                _ => tag.set_total_tracks(t as u32),
                             }
                         }
                         if let Some(t) = self.meta.disc {
-                            match t == 0 {
-                                true => tag.remove_disc(),
-                                false => tag.set_disc(t as u32),
+                            match t {
+                                0 => tag.remove_disc(),
+                                _ => tag.set_disc(t as u32),
                             }
                         }
                         if let Some(t) = self.meta.total_discs {
-                            match t == 0 {
-                                true => tag.remove_total_discs(),
-                                false => tag.set_total_discs(t as u32),
+                            match t {
+                                0 => tag.remove_total_discs(),
+                                _ => tag.set_total_discs(t as u32),
                             }
                         }
 
@@ -228,27 +157,27 @@ impl TagUpdate {
                             }
                         }
                         if let Some(t) = self.meta.track {
-                            match t == 0 {
-                                true => tag.remove_track_number(),
-                                false => tag.set_track_number(t),
+                            match t {
+                                0 => tag.remove_track_number(),
+                                _ => tag.set_track_number(t),
                             }
                         }
                         if let Some(t) = self.meta.total_tracks {
-                            match t == 0 {
-                                true => tag.remove_total_tracks(),
-                                false => tag.set_total_tracks(t),
+                            match t {
+                                0 => tag.remove_total_tracks(),
+                                _ => tag.set_total_tracks(t),
                             }
                         }
                         if let Some(t) = self.meta.disc {
-                            match t == 0 {
-                                true => tag.remove_disc_number(),
-                                false => tag.set_disc_number(t),
+                            match t {
+                                0 => tag.remove_disc_number(),
+                                _ => tag.set_disc_number(t),
                             }
                         }
                         if let Some(t) = self.meta.total_discs {
-                            match t == 0 {
-                                true => tag.remove_total_discs(),
-                                false => tag.set_total_discs(t),
+                            match t {
+                                0 => tag.remove_total_discs(),
+                                _ => tag.set_total_discs(t),
                             }
                         }
 
@@ -419,7 +348,15 @@ pub struct Changes {
 }
 
 impl Changes {
-    pub fn update(&mut self, path: &PathBuf, f: impl FnOnce(&mut FileOperation)) {
+    pub fn file_op(&self, path: &Path) -> Option<&FileOperation> {
+        self.file_operations.iter().find(|f| &f.old == path)
+    }
+
+    pub fn tag_update(&self, path: &Path) -> Option<&TagUpdate> {
+        self.file_op(path).and_then(|f| f.tag_update.as_ref())
+    }
+
+    pub fn update_file_op(&mut self, path: &PathBuf, f: impl FnOnce(&mut FileOperation)) {
         match self.file_operations.iter_mut().find(|f| &f.old == path) {
             Some(fo) => f(fo),
             None => {
@@ -436,7 +373,7 @@ impl Changes {
     }
 
     pub fn update_tag(&mut self, path: &PathBuf, f: impl FnOnce(&mut TagUpdate)) {
-        self.update(path, |fo| match &mut fo.tag_update {
+        self.update_file_op(path, |fo| match &mut fo.tag_update {
             Some(tu) => f(tu),
             None => {
                 let mut tu = TagUpdate::default();
@@ -446,6 +383,15 @@ impl Changes {
                 fo.tag_update = Some(tu);
             }
         });
+    }
+
+    pub fn check_dir_creation(&mut self, path: &PathBuf) -> bool {
+        if !self.dir_creations.iter().any(|d| &d.path == path) && !path.exists() {
+            self.dir_creations.push(DirCreation { path: path.clone() });
+            true
+        } else {
+            false
+        }
     }
 
     pub fn check_inconsitent_artists(
@@ -541,7 +487,7 @@ impl Changes {
                 if total_tracks.len() > 1 {
                     if let Some(t) = f(ar, al, total_tracks) {
                         for song in al.songs.iter().map(|&si| &index.songs[si]) {
-                            if song.total_tracks != zero_none(Some(t)) {
+                            if song.total_tracks != meta::zero_none(Some(t)) {
                                 self.update_tag(&song.path, |tu| tu.meta.total_tracks = Some(t));
                             }
                         }
@@ -574,7 +520,7 @@ impl Changes {
                 if total_discs.len() > 1 {
                     if let Some(t) = f(ar, al, total_discs) {
                         for song in al.songs.iter().map(|&si| &index.songs[si]) {
-                            if song.total_discs != zero_none(Some(t)) {
+                            if song.total_discs != meta::zero_none(Some(t)) {
                                 self.update_tag(&song.path, |tu| tu.meta.total_discs = Some(t));
                             }
                         }
@@ -592,14 +538,14 @@ impl Changes {
         }
 
         for ar in index.artists.iter() {
-            let ar_dir = output_dir.join(valid_os_string(&ar.name));
-            if !ar_dir.exists() {
-                self.dir_creations.push(DirCreation {
-                    path: ar_dir.clone(),
-                });
-            }
-
             for song in ar.singles.iter().map(|&si| &index.songs[si]) {
+                let ar_name = self
+                    .tag_update(&song.path)
+                    .and_then(|t| t.meta.top_level_artist())
+                    .unwrap_or(&ar.name);
+                let ar_dir = output_dir.join(valid_os_string(ar_name));
+                self.check_dir_creation(&ar_dir);
+
                 let extension = song.path.extension().unwrap();
                 let mut file_name = OsString::with_capacity(
                     4 + song.artist.len() + song.title.len() + extension.len(),
@@ -613,20 +559,26 @@ impl Changes {
 
                 let new_file = ar_dir.join(file_name);
                 if new_file != song.path {
-                    self.update(&song.path, |fo| fo.new = Some(new_file))
+                    self.update_file_op(&song.path, |fo| fo.new = Some(new_file))
                 }
             }
 
             for al in ar.albums.iter() {
-                let al_dir = ar_dir.join(valid_os_string(&al.name));
-
-                if !al_dir.exists() {
-                    self.dir_creations.push(DirCreation {
-                        path: al_dir.clone(),
-                    });
-                }
-
                 for song in al.songs.iter().map(|&si| &index.songs[si]) {
+                    let ar_name = self
+                        .tag_update(&song.path)
+                        .and_then(|t| t.meta.top_level_artist())
+                        .unwrap_or(&ar.name);
+                    let ar_dir = output_dir.join(valid_os_string(ar_name));
+                    self.check_dir_creation(&ar_dir);
+
+                    let al_name = self
+                        .tag_update(&song.path)
+                        .and_then(|t| t.meta.album.as_ref())
+                        .unwrap_or(&al.name);
+                    let al_dir = ar_dir.join(valid_os_string(al_name));
+                    self.check_dir_creation(&al_dir);
+
                     let extension = song.path.extension().unwrap();
                     let mut file_name = OsString::with_capacity(
                         9 + song.artist.len() + song.title.len() + extension.len(),
@@ -646,7 +598,7 @@ impl Changes {
 
                     let new_file = al_dir.join(file_name);
                     if new_file != song.path {
-                        self.update(&song.path, |fo| fo.new = Some(new_file))
+                        self.update_file_op(&song.path, |fo| fo.new = Some(new_file))
                     }
                 }
             }
@@ -654,16 +606,13 @@ impl Changes {
 
         if !index.unknown.is_empty() {
             let unknown_dir = output_dir.join("unknown");
-            if !unknown_dir.exists() {
-                self.dir_creations.push(DirCreation {
-                    path: unknown_dir.clone(),
-                });
-            }
+            self.check_dir_creation(&unknown_dir);
+
             for si in &index.unknown {
                 let song = &index.songs[*si];
                 let new_file = unknown_dir.join(song.path.file_name().unwrap());
 
-                self.update(&song.path, |fo| fo.new = Some(new_file));
+                self.update_file_op(&song.path, |fo| fo.new = Some(new_file));
             }
         }
     }
@@ -677,11 +626,21 @@ impl Changes {
             }
         }
 
+        for f in &self.file_operations {
+            if let Err(e) = f.execute(op_type) {
+                errors.push(e);
+            }
+        }
+
         errors
     }
 
     pub fn dir_creation_iter(&self) -> DirCreationIter {
         DirCreationIter::from(self)
+    }
+
+    pub fn file_operation_iter(&self, op_type: FileOpType) -> FileOperationIter {
+        FileOperationIter::from(self, op_type)
     }
 }
 
@@ -709,23 +668,14 @@ impl<'a> Iterator for DirCreationIter<'a> {
 }
 
 pub struct FileOperationIter<'a> {
-    iter: Box<dyn Iterator<Item = FileOperation<'a>> + 'a>,
+    iter: Box<dyn Iterator<Item = &'a FileOperation> + 'a>,
     op_type: FileOpType,
 }
 
-impl<'a, 'b> FileOperationIter<'a> {
-    pub fn from(index: &'a MusicIndex, op_type: FileOpType) -> Self {
+impl<'a> FileOperationIter<'a> {
+    pub fn from(changes: &'a Changes, op_type: FileOpType) -> Self {
         Self {
-            iter: Box::new(
-                index
-                    .songs
-                    .iter()
-                    .filter(|s| s.new_file.is_some())
-                    .map(|s| FileOperation {
-                        old: s.current_file.as_ref(),
-                        new: s.new_file.as_ref().unwrap(),
-                    }),
-            ),
+            iter: Box::new(changes.file_operations.iter()),
             op_type,
         }
     }
@@ -804,15 +754,4 @@ fn is_music_extension(s: &OsStr) -> bool {
     }
 
     false
-}
-
-#[inline]
-fn zero_none(n: Option<u16>) -> Option<u16> {
-    match n {
-        Some(n) => match n == 0 {
-            true => None,
-            false => Some(n),
-        },
-        None => None,
-    }
 }

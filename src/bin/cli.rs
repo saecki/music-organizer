@@ -1,10 +1,15 @@
 use clap::{App, Arg, Shell};
 use colorful::Colorful;
-use music_organizer::{Album, Artist, Changes, FileOpType, MusicIndex, OptionAsStr, Song};
-use std::io::Write;
-use std::path::PathBuf;
-use std::process::exit;
-use std::str::FromStr;
+use music_organizer::{
+    meta::{Album, Artist, Song},
+    Changes, FileOpType, FileOperation, MusicIndex, OptionAsStr,
+};
+use std::{
+    io::Write,
+    path::{Path, PathBuf},
+    process::exit,
+    str::FromStr,
+};
 
 static mut LAST_LEN: usize = 0;
 
@@ -105,7 +110,15 @@ fn main() {
     };
 
     let output_dir = match matches.value_of("output-dir") {
-        Some(s) => PathBuf::from(s),
+        Some(s) => {
+            let dir = PathBuf::from(s);
+            match dir.canonicalize() {
+                Ok(p) => p,
+                Err(_) => std::env::current_dir()
+                    .map(|wd| wd.join(dir.clone()))
+                    .unwrap_or(dir),
+            }
+        }
         None => abs_music_dir.clone(),
     };
 
@@ -145,17 +158,19 @@ fn main() {
     reset_print_verbose();
     println!();
 
+    let mut changes = Changes::default();
+
     println!("============================================================");
     println!("# Checking");
     println!("============================================================");
-    music_organizer::check_inconsitent_artists(&mut index, inconsitent_artists_dialog);
-    music_organizer::check_inconsitent_albums(&mut index, inconsitent_albums_dialog);
-    music_organizer::check_inconsitent_total_tracks(&mut index, inconsitent_total_tracks_dialog);
-    music_organizer::check_inconsitent_total_discs(&mut index, inconsitent_total_discs_dialog);
-
+    changes.check_inconsitent_artists(&index, inconsitent_artists_dialog);
+    changes.check_inconsitent_albums(&index, inconsitent_albums_dialog);
+    changes.check_inconsitent_total_tracks(&index, inconsitent_total_tracks_dialog);
+    changes.check_inconsitent_total_discs(&index, inconsitent_total_discs_dialog);
     println!();
 
-    let changes = Changes::from(&index, &output_dir);
+    changes.file_system(&index, &output_dir);
+
     if changes.dir_creations.is_empty() && changes.file_operations.is_empty() {
         println!("{}", "nothing to do exiting...".green());
         return;
@@ -180,11 +195,8 @@ fn main() {
             println!("files:");
             for (i, f) in changes.file_operations.iter().enumerate() {
                 println!(
-                    "{} {} {} to {}",
-                    (i + 1).to_string().blue(),
-                    op_type_str_present,
-                    format!("{}", f.old.strip_prefix(&music_dir).unwrap().display()).yellow(),
-                    format!("{}", f.new.strip_prefix(&output_dir).unwrap().display()).green(),
+                    "{}",
+                    format_file_op(&music_dir, &output_dir, f, op_type_str_present),
                 );
             }
             println!();
@@ -242,26 +254,16 @@ fn main() {
         match r {
             Ok(_) => {
                 print_verbose(
-                    &format!(
-                        "{} {} {} to {}",
-                        (i + 1).to_string().blue(),
-                        op_type_str_past,
-                        format!("{}", f.old.strip_prefix(&music_dir).unwrap().display()).yellow(),
-                        format!("{}", f.new.strip_prefix(&output_dir).unwrap().display()).green(),
-                    ),
+                    &format_file_op(&music_dir, &output_dir, f, op_type_str_past),
                     verbosity >= 2,
                 );
             }
             Err(e) => {
                 reset_print_verbose();
                 println!(
-                    "{} {} {} {} to {}:\n{}",
-                    (i + 1).to_string().blue(),
-                    "error.red".red(),
-                    op_type_str_past,
-                    format!("{}", f.old.strip_prefix(&music_dir).unwrap().display()).yellow(),
-                    format!("{}", f.new.strip_prefix(&output_dir).unwrap().display()).green(),
-                    e.to_string().red(),
+                    "error: {}\n{}",
+                    &format_file_op(&music_dir, &output_dir, f, op_type_str_past),
+                    e,
                 );
             }
         }
@@ -526,6 +528,44 @@ fn inconsitent_total_discs_dialog(
         },
         _ => return total_discs[i - 3].1,
     }
+}
+
+fn print_file_op_verbose(
+    music_dir: &Path,
+    ouput_dir: &Path,
+    file_op: &FileOperation,
+    op_type_str: &str,
+    verbose: bool,
+) -> String {
+    //let string = format!(
+    //    "{}",
+    //    file_op.old.strip_prefix(&music_dir).unwrap().display()
+    //)
+    //.yellow();
+
+    //if let Some(new) = &file_op.new {
+    //    format!(
+    //        "{} {} {} {} to {}:\n{}",
+    //        (i + 1).to_string().blue(),
+    //        "error.red".red(),
+    //        op_type_str,
+    //        format!(
+    //            "{}",
+    //            file_op.old.strip_prefix(&music_dir).unwrap().display()
+    //        )
+    //        .yellow(),
+    //        format!(
+    //            "{}",
+    //            file_op.new.strip_prefix(&output_dir).unwrap().display()
+    //        )
+    //        .green(),
+    //        e.to_string().red(),
+    //    );
+    //}
+
+    //string
+
+    format!("{:?}", file_op)
 }
 
 #[inline]
