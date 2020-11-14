@@ -86,8 +86,8 @@ impl Metadata {
 
 #[inline]
 pub fn zero_none(n: Option<u16>) -> Option<u16> {
-    n.and_then(|n| match n == 0 {
-        true => None,
-        false => Some(n),
+    n.and_then(|n| match n {
+        0 => None,
+        _ => Some(n),
     })
 }

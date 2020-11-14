@@ -215,10 +215,7 @@ impl MusicIndex {
 
 impl From<PathBuf> for MusicIndex {
     fn from(music_dir: PathBuf) -> Self {
-        Self {
-            music_dir,
-            ..Default::default()
-        }
+        Self { music_dir, ..Default::default() }
     }
 }
 
@@ -231,12 +228,7 @@ impl<'a> From<&'a mut MusicIndex> for ReadMusicIndexIter<'a> {
     fn from(index: &'a mut MusicIndex) -> Self {
         let iter = WalkDir::new(&index.music_dir)
             .into_iter()
-            .filter_entry(|e| {
-                !e.file_name()
-                    .to_str()
-                    .map(|s| s.starts_with('.'))
-                    .unwrap_or(false)
-            })
+            .filter_entry(|e| !e.file_name().to_str().map(|s| s.starts_with('.')).unwrap_or(false))
             .filter_map(|e| e.ok())
             .filter(|e| e.metadata().map(|m| m.is_file()).unwrap_or(false))
             .filter_map(|e| {
@@ -249,10 +241,7 @@ impl<'a> From<&'a mut MusicIndex> for ReadMusicIndexIter<'a> {
                 }
             });
 
-        Self {
-            iter: Box::new(iter),
-            index,
-        }
+        Self { iter: Box::new(iter), index }
     }
 }
 
@@ -360,10 +349,7 @@ impl Changes {
         match self.file_operations.iter_mut().find(|f| &f.old == path) {
             Some(fo) => f(fo),
             None => {
-                let mut fo = FileOperation {
-                    old: path.clone(),
-                    ..Default::default()
-                };
+                let mut fo = FileOperation { old: path.clone(), ..Default::default() };
 
                 f(&mut fo);
 
@@ -532,9 +518,7 @@ impl Changes {
 
     pub fn file_system(&mut self, index: &MusicIndex, output_dir: &PathBuf) {
         if !output_dir.exists() {
-            self.dir_creations.push(DirCreation {
-                path: output_dir.clone(),
-            })
+            self.dir_creations.push(DirCreation { path: output_dir.clone() })
         }
 
         for ar in index.artists.iter() {
@@ -650,9 +634,7 @@ pub struct DirCreationIter<'a> {
 
 impl<'a> From<&'a Changes> for DirCreationIter<'a> {
     fn from(changes: &'a Changes) -> Self {
-        Self {
-            iter: Box::new(changes.dir_creations.iter()),
-        }
+        Self { iter: Box::new(changes.dir_creations.iter()) }
     }
 }
 
@@ -674,10 +656,7 @@ pub struct FileOperationIter<'a> {
 
 impl<'a> FileOperationIter<'a> {
     pub fn from(changes: &'a Changes, op_type: FileOpType) -> Self {
-        Self {
-            iter: Box::new(changes.file_operations.iter()),
-            op_type,
-        }
+        Self { iter: Box::new(changes.file_operations.iter()), op_type }
     }
 }
 
