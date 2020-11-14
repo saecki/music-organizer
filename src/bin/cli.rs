@@ -1,6 +1,7 @@
 use clap::{App, Arg, Shell};
 use colorful::Colorful;
 use music_organizer::{
+    meta::Metadata,
     meta::{Album, Artist, Song},
     Changes, FileOpType, FileOperation, MusicIndex, OptionAsStr,
 };
@@ -100,11 +101,7 @@ fn main() {
     let abs_music_dir = match PathBuf::from(&music_dir).canonicalize() {
         Ok(t) => t,
         Err(e) => {
-            println!(
-                "Not a valid music dir path: {}\n{:?}",
-                music_dir.display(),
-                e
-            );
+            println!("Not a valid music dir path: {}\n{:?}", music_dir.display(), e);
             exit(1)
         }
     };
@@ -114,18 +111,13 @@ fn main() {
             let dir = PathBuf::from(s);
             match dir.canonicalize() {
                 Ok(p) => p,
-                Err(_) => std::env::current_dir()
-                    .map(|wd| wd.join(dir.clone()))
-                    .unwrap_or(dir),
+                Err(_) => std::env::current_dir().map(|wd| wd.join(dir.clone())).unwrap_or(dir),
             }
         }
         None => abs_music_dir.clone(),
     };
 
-    let verbosity = matches
-        .value_of("verbosity")
-        .map(|v| v.parse::<usize>().unwrap())
-        .unwrap_or(0);
+    let verbosity = matches.value_of("verbosity").map(|v| v.parse::<usize>().unwrap()).unwrap_or(0);
     let op_type = match matches.is_present("copy") {
         true => FileOpType::Copy,
         false => FileOpType::Move,
@@ -133,9 +125,9 @@ fn main() {
     let yes = matches.is_present("assume-yes");
     let dryrun = matches.is_present("dryrun");
 
-    let (op_type_str_present, op_type_str_past) = match op_type {
-        FileOpType::Copy => ("copy", "copied"),
-        FileOpType::Move => ("move", "moved"),
+    let (op_type_sim_pres, op_type_pres_prog, op_type_sim_past) = match op_type {
+        FileOpType::Copy => ("copy", "copying", "copied"),
+        FileOpType::Move => ("move", "moving", "moved"),
     };
 
     println!("============================================================");
@@ -195,8 +187,9 @@ fn main() {
             println!("files:");
             for (i, f) in changes.file_operations.iter().enumerate() {
                 println!(
-                    "{}",
-                    format_file_op(&music_dir, &output_dir, f, op_type_str_present),
+                    "{} {}",
+                    (i + 1).to_string().blue(),
+                    format_file_op_verbose(&music_dir, &output_dir, f, op_type_sim_pres, verbosity)
                 );
             }
             println!();
@@ -207,7 +200,7 @@ fn main() {
         "{} dirs will be created.\n{} files will be {}.",
         changes.dir_creations.len(),
         changes.file_operations.len(),
-        op_type_str_past,
+        op_type_sim_past,
     );
 
     if dryrun {
@@ -229,21 +222,18 @@ fn main() {
         match r {
             Ok(_) => {
                 print_verbose(
-                    &format!(
-                        "{} created dir {}",
-                        (i + 1).to_string().blue(),
-                        d.path.display()
-                    ),
+                    &format!("{} created dir {}", (i + 1).to_string().blue(), d.path.display()),
                     verbosity >= 2,
                 );
             }
             Err(e) => {
                 reset_print_verbose();
                 println!(
-                    "{} error creating dir {}:\n{}",
+                    "{} {} creating dir {}:\n{}",
                     (i + 1).to_string().blue(),
+                    "error".red(),
                     d.path.display(),
-                    e
+                    e.to_string().red()
                 );
             }
         }
@@ -253,17 +243,21 @@ fn main() {
     for (i, (f, r)) in changes.file_operation_iter(op_type).enumerate() {
         match r {
             Ok(_) => {
-                print_verbose(
-                    &format_file_op(&music_dir, &output_dir, f, op_type_str_past),
-                    verbosity >= 2,
+                let s = format!(
+                    "{} {}",
+                    (i + 1).to_string().blue(),
+                    format_file_op_verbose(&music_dir, &output_dir, f, op_type_sim_past, verbosity)
                 );
+                print_verbose(&s, verbosity >= 2);
             }
             Err(e) => {
                 reset_print_verbose();
                 println!(
-                    "error: {}\n{}",
-                    &format_file_op(&music_dir, &output_dir, f, op_type_str_past),
-                    e,
+                    "{} {} {}:\n{}",
+                    (i + 1).to_string().blue(),
+                    "error".red(),
+                    format_file_op_verbose(&music_dir, &output_dir, f, op_type_pres_prog, 2),
+                    e.to_string().red(),
                 );
             }
         }
@@ -416,7 +410,7 @@ fn inconsitent_total_tracks_dialog(
         .iter()
         .map(|(songs, tt)| {
             let mut tt_str = match tt {
-                Some(n) => format!("{:02}:   ", n.to_string().yellow()),
+                Some(n) => format!("{:02}:   ", n).yellow().to_string(),
                 None => "none: ".yellow().to_string(),
             };
             let mut iter = songs.iter();
@@ -481,7 +475,7 @@ fn inconsitent_total_discs_dialog(
         .iter()
         .map(|(songs, tt)| {
             let mut tt_str = match tt {
-                Some(n) => format!("{:02}:   ", n.to_string().yellow()),
+                Some(n) => format!("{}:    ", n.to_string().yellow()),
                 None => "none: ".yellow().to_string(),
             };
             let mut iter = songs.iter();
@@ -530,42 +524,54 @@ fn inconsitent_total_discs_dialog(
     }
 }
 
-fn print_file_op_verbose(
+fn format_file_op_verbose(
     music_dir: &Path,
-    ouput_dir: &Path,
+    output_dir: &Path,
     file_op: &FileOperation,
     op_type_str: &str,
-    verbose: bool,
+    verbosity: usize,
 ) -> String {
-    //let string = format!(
-    //    "{}",
-    //    file_op.old.strip_prefix(&music_dir).unwrap().display()
-    //)
-    //.yellow();
+    let old_path = format!("{}", file_op.old.strip_prefix(music_dir).unwrap().display()).yellow();
+    let new = file_op
+        .new
+        .as_ref()
+        .map(|n| format!("{}", n.strip_prefix(output_dir).unwrap().display()).green());
 
-    //if let Some(new) = &file_op.new {
-    //    format!(
-    //        "{} {} {} {} to {}:\n{}",
-    //        (i + 1).to_string().blue(),
-    //        "error.red".red(),
-    //        op_type_str,
-    //        format!(
-    //            "{}",
-    //            file_op.old.strip_prefix(&music_dir).unwrap().display()
-    //        )
-    //        .yellow(),
-    //        format!(
-    //            "{}",
-    //            file_op.new.strip_prefix(&output_dir).unwrap().display()
-    //        )
-    //        .green(),
-    //        e.to_string().red(),
-    //    );
-    //}
+    match (&new, &file_op.tag_update) {
+        (Some(new_path), Some(tag_update)) => format!(
+            "{} {} to {}\n{}",
+            op_type_str,
+            new_path,
+            old_path,
+            format_metadata(&tag_update.meta)
+        ),
+        (None, Some(tag_update)) => format_metadata(&tag_update.meta),
+        (Some(new_path), None) => format!("{} {} to {}", op_type_str, new_path, old_path),
+        (None, None) => format!("Nothing to do: {}", old_path),
+    }
+}
 
-    //string
-
-    format!("{:?}", file_op)
+fn format_metadata(m: &Metadata) -> String {
+    format!(
+        "\
+artist: {}
+album artist: {}
+album: {}
+title: {}
+track number: {}
+total tracks: {}
+disc number: {}
+total discs: {}
+",
+        m.artist.as_ref().unwrap_or(&"unchanged".into()),
+        m.album_artist.as_ref().unwrap_or(&"unchanged".into()),
+        m.album.as_ref().unwrap_or(&"unchanged".into()),
+        m.title.as_ref().unwrap_or(&"unchanged".into()),
+        m.track.map(|n| n.to_string()).unwrap_or("unchanged".into()),
+        m.total_tracks.map(|n| n.to_string()).unwrap_or("unchanged".into()),
+        m.disc.map(|n| n.to_string()).unwrap_or("unchanged".into()),
+        m.total_discs.map(|n| n.to_string()).unwrap_or("unchanged".into()),
+    )
 }
 
 #[inline]
@@ -613,9 +619,8 @@ fn input_loop(str: &str, predicate: fn(&str) -> bool) -> String {
 }
 
 fn input_loop_parse<T: FromStr + Default>(str: &str) -> T {
-    input_loop(str, |v| v.parse::<T>().is_ok())
-        .parse::<T>()
-        .unwrap_or_else(|_| unreachable!()) // Can't use unwrap because FromStr::Err does not neccesarily implement Debug
+    input_loop(str, |v| v.parse::<T>().is_ok()).parse::<T>().unwrap_or_else(|_| unreachable!())
+    // Can't use unwrap because FromStr::Err does not neccesarily implement Debug
 }
 
 fn input_options_loop(str: &str, options: &[&str]) -> usize {
