@@ -1,7 +1,7 @@
 #!/bin/sh
 
 cargo build --release
-sudo cp target/release/music_organizer /usr/local/bin
+sudo cp target/release/cli /usr/local/bin/music_organizer
 
 case "$SHELL" in
     *zsh)

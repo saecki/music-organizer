@@ -1,5 +1,5 @@
 use clap::{App, Arg, Shell};
-use colorful::Colorful;
+use colored::Colorize;
 use music_organizer::{
     meta::Metadata,
     meta::{Album, Artist, Song},
@@ -41,6 +41,13 @@ fn main() {
                 .long("copy")
                 .help("Copy the files instead of moving")
                 .requires("output-dir"),
+        )
+        .arg(
+            Arg::with_name("nocheck")
+                .short("n")
+                .long("nocheck")
+                .help("Don't check for inconsistencies")
+                .takes_value(false),
         )
         .arg(
             Arg::with_name("assume-yes")
@@ -97,12 +104,14 @@ fn main() {
         println!("done");
         exit(0);
     }
-    let music_dir = PathBuf::from(matches.value_of("music-dir").unwrap());
-    let abs_music_dir = match PathBuf::from(&music_dir).canonicalize() {
-        Ok(t) => t,
-        Err(e) => {
-            println!("Not a valid music dir path: {}\n{:?}", music_dir.display(), e);
-            exit(1)
+    let abs_music_dir = {
+        let music_dir = PathBuf::from(matches.value_of("music-dir").unwrap());
+        match PathBuf::from(&music_dir).canonicalize() {
+            Ok(t) => t,
+            Err(e) => {
+                println!("Not a valid music dir path: {}\n{:?}", music_dir.display(), e);
+                exit(1)
+            }
         }
     };
 
@@ -111,11 +120,16 @@ fn main() {
             let dir = PathBuf::from(s);
             match dir.canonicalize() {
                 Ok(p) => p,
-                Err(_) => std::env::current_dir().map(|wd| wd.join(dir.clone())).unwrap_or(dir),
+                Err(_) => std::env::current_dir()
+                    .map(|wd| wd.join(dir.clone()))
+                    .expect("could not retrieve working directory"),
             }
         }
         None => abs_music_dir.clone(),
     };
+
+    println!("music dir: {}", abs_music_dir.display());
+    println!("output dir: {}", output_dir.display());
 
     let verbosity = matches.value_of("verbosity").map(|v| v.parse::<usize>().unwrap()).unwrap_or(0);
     let op_type = match matches.is_present("copy") {
@@ -123,6 +137,7 @@ fn main() {
         false => FileOpType::Move,
     };
     let yes = matches.is_present("assume-yes");
+    let nocheck = matches.is_present("nocheck");
     let dryrun = matches.is_present("dryrun");
 
     let (op_type_sim_pres, op_type_pres_prog, op_type_sim_past) = match op_type {
@@ -133,7 +148,7 @@ fn main() {
     println!("============================================================");
     println!("# Indexing");
     println!("============================================================");
-    let mut index = MusicIndex::from(music_dir.clone());
+    let mut index = MusicIndex::from(abs_music_dir.clone());
 
     for (i, m) in &mut index.read_iter().enumerate() {
         print_verbose(
@@ -152,14 +167,19 @@ fn main() {
 
     let mut changes = Changes::default();
 
-    println!("============================================================");
-    println!("# Checking");
-    println!("============================================================");
-    changes.check_inconsitent_artists(&index, inconsitent_artists_dialog);
-    changes.check_inconsitent_albums(&index, inconsitent_albums_dialog);
-    changes.check_inconsitent_total_tracks(&index, inconsitent_total_tracks_dialog);
-    changes.check_inconsitent_total_discs(&index, inconsitent_total_discs_dialog);
-    println!();
+    #[cfg(feature = "checks")]
+    {
+        if !nocheck {
+            println!("============================================================");
+            println!("# Checking");
+            println!("============================================================");
+            changes.check_inconsitent_artists(&index, inconsitent_artists_dialog);
+            changes.check_inconsitent_albums(&index, inconsitent_albums_dialog);
+            changes.check_inconsitent_total_tracks(&index, inconsitent_total_tracks_dialog);
+            changes.check_inconsitent_total_discs(&index, inconsitent_total_discs_dialog);
+            println!();
+        }
+    }
 
     changes.file_system(&index, &output_dir);
 
@@ -189,7 +209,7 @@ fn main() {
                 println!(
                     "{} {}",
                     (i + 1).to_string().blue(),
-                    format_file_op_verbose(&music_dir, &output_dir, f, op_type_sim_pres, verbosity)
+                    format_file_op(&abs_music_dir, &output_dir, f, op_type_sim_pres, verbosity)
                 );
             }
             println!();
@@ -246,7 +266,7 @@ fn main() {
                 let s = format!(
                     "{} {}",
                     (i + 1).to_string().blue(),
-                    format_file_op_verbose(&music_dir, &output_dir, f, op_type_sim_past, verbosity)
+                    format_file_op(&abs_music_dir, &output_dir, f, op_type_sim_past, verbosity)
                 );
                 print_verbose(&s, verbosity >= 2);
             }
@@ -256,7 +276,7 @@ fn main() {
                     "{} {} {}:\n{}",
                     (i + 1).to_string().blue(),
                     "error".red(),
-                    format_file_op_verbose(&music_dir, &output_dir, f, op_type_pres_prog, 2),
+                    format_file_op(&abs_music_dir, &output_dir, f, op_type_pres_prog, 2),
                     e.to_string().red(),
                 );
             }
@@ -283,7 +303,7 @@ fn inconsitent_artists_dialog(index: &MusicIndex, a: &Artist, b: &Artist) -> Opt
                 } else {
                     println!(
                         "      {:02} - {} - {}",
-                        s.track.unwrap_or(0),
+                        s.track_number.unwrap_or(0),
                         s.artist.opt_str(),
                         s.title.opt_str()
                     );
@@ -344,7 +364,7 @@ fn inconsitent_albums_dialog(
         for s in album.songs.iter().map(|&si| &index.songs[si]) {
             println!(
                 "      {:02} - {} - {}",
-                s.track.unwrap_or(0),
+                s.track_number.unwrap_or(0),
                 s.artist.opt_str(),
                 s.title.opt_str()
             );
@@ -418,7 +438,7 @@ fn inconsitent_total_tracks_dialog(
             let s = iter.next().unwrap();
             tt_str.push_str(&format!(
                 "{:02} - {} - {}",
-                &s.track.unwrap_or(0),
+                &s.track_number.unwrap_or(0),
                 &s.artist.opt_str(),
                 &s.title.opt_str()
             ));
@@ -426,7 +446,7 @@ fn inconsitent_total_tracks_dialog(
             for s in iter {
                 tt_str.push_str(&format!(
                     "\n      {:02} - {} - {}",
-                    &s.track.unwrap_or(0),
+                    &s.track_number.unwrap_or(0),
                     &s.artist.opt_str(),
                     &s.title.opt_str()
                 ));
@@ -483,7 +503,7 @@ fn inconsitent_total_discs_dialog(
             let s = iter.next().unwrap();
             tt_str.push_str(&format!(
                 "{:02} - {} - {}",
-                &s.disc.unwrap_or(0),
+                &s.disc_number.unwrap_or(0),
                 &s.artist.opt_str(),
                 &s.title.opt_str()
             ));
@@ -491,7 +511,7 @@ fn inconsitent_total_discs_dialog(
             for s in iter {
                 tt_str.push_str(&format!(
                     "\n      {:02} - {} - {}",
-                    &s.disc.unwrap_or(0),
+                    &s.disc_number.unwrap_or(0),
                     &s.artist.opt_str(),
                     &s.title.opt_str()
                 ));
@@ -524,7 +544,7 @@ fn inconsitent_total_discs_dialog(
     }
 }
 
-fn format_file_op_verbose(
+fn format_file_op(
     music_dir: &Path,
     output_dir: &Path,
     file_op: &FileOperation,
@@ -543,15 +563,21 @@ fn format_file_op_verbose(
             op_type_str,
             new_path,
             old_path,
-            format_metadata(&tag_update.meta)
+            format_metadata(&tag_update.meta, verbosity)
         ),
-        (None, Some(tag_update)) => format_metadata(&tag_update.meta),
-        (Some(new_path), None) => format!("{} {} to {}", op_type_str, new_path, old_path),
+        (None, Some(tag_update)) => format_metadata(&tag_update.meta, verbosity),
+        (Some(new_path), None) => {
+            if op_type_str.len() + old_path.len() + new_path.len() + 5 <= 180 {
+                format!("{} {} to {}", op_type_str, old_path, new_path)
+            } else {
+                format!("{} {}\n    to {}", op_type_str, old_path, new_path)
+            }
+        }
         (None, None) => format!("Nothing to do: {}", old_path),
     }
 }
 
-fn format_metadata(m: &Metadata) -> String {
+fn format_metadata(m: &Metadata, verbosity: usize) -> String {
     format!(
         "\
 artist: {}
@@ -567,9 +593,9 @@ total discs: {}
         m.album_artist.as_ref().unwrap_or(&"unchanged".into()),
         m.album.as_ref().unwrap_or(&"unchanged".into()),
         m.title.as_ref().unwrap_or(&"unchanged".into()),
-        m.track.map(|n| n.to_string()).unwrap_or("unchanged".into()),
+        m.track_number.map(|n| n.to_string()).unwrap_or("unchanged".into()),
         m.total_tracks.map(|n| n.to_string()).unwrap_or("unchanged".into()),
-        m.disc.map(|n| n.to_string()).unwrap_or("unchanged".into()),
+        m.disc_number.map(|n| n.to_string()).unwrap_or("unchanged".into()),
         m.total_discs.map(|n| n.to_string()).unwrap_or("unchanged".into()),
     )
 }

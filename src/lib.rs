@@ -97,7 +97,7 @@ impl TagUpdate {
                                 false => tag.set_title(t),
                             }
                         }
-                        if let Some(t) = self.meta.track {
+                        if let Some(t) = self.meta.track_number {
                             match t {
                                 0 => tag.remove_track(),
                                 _ => tag.set_track(t as u32),
@@ -109,7 +109,7 @@ impl TagUpdate {
                                 _ => tag.set_total_tracks(t as u32),
                             }
                         }
-                        if let Some(t) = self.meta.disc {
+                        if let Some(t) = self.meta.disc_number {
                             match t {
                                 0 => tag.remove_disc(),
                                 _ => tag.set_disc(t as u32),
@@ -156,7 +156,7 @@ impl TagUpdate {
                                 false => tag.set_title(t),
                             }
                         }
-                        if let Some(t) = self.meta.track {
+                        if let Some(t) = self.meta.track_number {
                             match t {
                                 0 => tag.remove_track_number(),
                                 _ => tag.set_track_number(t),
@@ -168,7 +168,7 @@ impl TagUpdate {
                                 _ => tag.set_total_tracks(t),
                             }
                         }
-                        if let Some(t) = self.meta.disc {
+                        if let Some(t) = self.meta.disc_number {
                             match t {
                                 0 => tag.remove_disc_number(),
                                 _ => tag.set_disc_number(t),
@@ -227,6 +227,7 @@ pub struct ReadMusicIndexIter<'a> {
 impl<'a> From<&'a mut MusicIndex> for ReadMusicIndexIter<'a> {
     fn from(index: &'a mut MusicIndex) -> Self {
         let iter = WalkDir::new(&index.music_dir)
+            .follow_links(true)
             .into_iter()
             .filter_entry(|e| !e.file_name().to_str().map(|s| s.starts_with('.')).unwrap_or(false))
             .filter_map(|e| e.ok())
@@ -254,9 +255,9 @@ impl<'a> Iterator for ReadMusicIndexIter<'a> {
             let song_index = self.index.songs.len();
 
             let song = Song {
-                track: m.track,
+                track_number: m.track_number,
                 total_tracks: m.total_tracks,
-                disc: m.disc,
+                disc_number: m.disc_number,
                 total_discs: m.total_discs,
                 artist: m.artist.clone(),
                 title: m.title.clone(),
@@ -568,7 +569,7 @@ impl Changes {
                         9 + song.artist.len() + song.title.len() + extension.len(),
                     );
 
-                    let track = match song.track {
+                    let track = match song.track_number {
                         Some(n) => n,
                         _ => 0,
                     };
