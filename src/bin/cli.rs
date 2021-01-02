@@ -526,8 +526,8 @@ fn inconsitent_total_discs_dialog(
     let i = input_options_loop(&msg, &options);
 
     match i {
-        0 => return None,
-        1 => return Some(0),
+        0 => None,
+        1 => Some(0),
         2 => loop {
             let new_value = input_loop_parse::<u16>("enter a new value:");
             let msg = format!("new value: '{}'", new_value);
