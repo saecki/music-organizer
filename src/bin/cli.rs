@@ -437,7 +437,8 @@ fn inconsitent_total_tracks_dialog(
 
             let s = iter.next().unwrap();
             tt_str.push_str(&format!(
-                "{:02} - {} - {}",
+                "{}|{:02} - {} - {}",
+                &s.disc_number.unwrap_or(0),
                 &s.track_number.unwrap_or(0),
                 &s.artist.opt_str(),
                 &s.title.opt_str()
@@ -445,7 +446,8 @@ fn inconsitent_total_tracks_dialog(
 
             for s in iter {
                 tt_str.push_str(&format!(
-                    "\n      {:02} - {} - {}",
+                    "\n      {}|{:02} - {} - {}",
+                    &s.disc_number.unwrap_or(0),
                     &s.track_number.unwrap_or(0),
                     &s.artist.opt_str(),
                     &s.title.opt_str()
@@ -502,18 +504,20 @@ fn inconsitent_total_discs_dialog(
 
             let s = iter.next().unwrap();
             tt_str.push_str(&format!(
-                "{:02} - {} - {}",
+                "{}|{:02} - {} - {}",
                 &s.disc_number.unwrap_or(0),
+                &s.track_number.unwrap_or(0),
                 &s.artist.opt_str(),
-                &s.title.opt_str()
+                &s.title.opt_str(),
             ));
 
             for s in iter {
                 tt_str.push_str(&format!(
-                    "\n      {:02} - {} - {}",
+                    "\n      {}|{:02} - {} - {}",
                     &s.disc_number.unwrap_or(0),
+                    &s.track_number.unwrap_or(0),
                     &s.artist.opt_str(),
-                    &s.title.opt_str()
+                    &s.title.opt_str(),
                 ));
             }
 
@@ -589,10 +593,10 @@ total tracks: {}
 disc number: {}
 total discs: {}
 ",
-        m.artist.as_ref().unwrap_or(&"unchanged".into()),
-        m.album_artist.as_ref().unwrap_or(&"unchanged".into()),
-        m.album.as_ref().unwrap_or(&"unchanged".into()),
-        m.title.as_ref().unwrap_or(&"unchanged".into()),
+        m.artist.as_ref().map(|s| s.as_str()).unwrap_or("unchanged"),
+        m.album_artist.as_ref().map(|s| s.as_str()).unwrap_or("unchanged"),
+        m.album.as_ref().map(|s| s.as_str()).unwrap_or("unchanged"),
+        m.title.as_ref().map(|s| s.as_str()).unwrap_or("unchanged"),
         m.track_number.map(|n| n.to_string()).unwrap_or("unchanged".into()),
         m.total_tracks.map(|n| n.to_string()).unwrap_or("unchanged".into()),
         m.disc_number.map(|n| n.to_string()).unwrap_or("unchanged".into()),
