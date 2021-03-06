@@ -4,13 +4,13 @@ cargo build --release
 sudo cp target/release/cli /usr/local/bin/music_organizer
 
 case "$SHELL" in
-    *zsh)
-	echo "creating a completion script for zsh"
-	sudo /usr/local/bin/music_organizer -g "zsh" -o /usr/share/zsh/site-functions/
-	;;
     *bash)
 	echo "creating a completion script for bash"
-	sudo /usr/local/bin/music_organizer -g "bash" -o /etc/bash_completion.d/
+	/usr/local/bin/music_organizer -g "bash" | sudo tee /etc/bash_completion.d/_music_organizer > /dev/null
+	;;
+    *zsh)
+	echo "creating a completion script for zsh"
+	/usr/local/bin/music_organizer -g "zsh" | sudo tee /usr/share/zsh/site-functions/music_organizer > /dev/null
 	;;
     *)
 	echo "create a completion script for your shell manually by running 'music_organizer --generate-completion <shell>'"

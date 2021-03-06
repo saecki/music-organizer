@@ -1,16 +1,28 @@
-use clap::{App, Arg, Shell};
+use clap::{App, Arg, ValueHint};
+use clap_generate::generate;
+use clap_generate::generators::{Bash, Elvish, Fish, PowerShell, Zsh};
 use colored::Colorize;
+
 use music_organizer::{
     meta::Metadata,
     meta::{Album, Artist, Song},
     Changes, FileOpType, FileOperation, MusicIndex, OptionAsStr,
 };
+
 use std::{
     io::Write,
     path::{Path, PathBuf},
     process::exit,
     str::FromStr,
 };
+
+const BIN_NAME: &str = "music_organizer";
+
+const BASH: &str = "bash";
+const ELVISH: &str = "elvish";
+const FISH: &str = "fish";
+const PWRSH: &str = "powershell";
+const ZSH: &str = "zsh";
 
 static mut LAST_LEN: usize = 0;
 
@@ -20,90 +32,90 @@ fn main() {
         .author("Saecki")
         .about("Moves or copies and renames Music files using their metadata information.")
         .arg(
-            Arg::with_name("music-dir")
-                .short("m")
+            Arg::new("music-dir")
+                .short('m')
                 .long("music-dir")
-                .help("The directory which will be searched for music files")
+                .about("The directory which will be searched for music files")
                 .takes_value(true)
-                .required_unless("generate-completion")
-                .conflicts_with("generate-completion"),
+                .required_unless_present("generate-completion")
+                .value_hint(ValueHint::DirPath),
         )
         .arg(
-            Arg::with_name("output-dir")
-                .short("o")
+            Arg::new("output-dir")
+                .short('o')
                 .long("output-dir")
-                .help("The directory which the content will be written to")
-                .takes_value(true),
+                .about("The directory which the content will be written to")
+                .takes_value(true)
+                .value_hint(ValueHint::DirPath),
         )
         .arg(
-            Arg::with_name("copy")
-                .short("c")
+            Arg::new("copy")
+                .short('c')
                 .long("copy")
-                .help("Copy the files instead of moving")
+                .about("Copy the files instead of moving")
                 .requires("output-dir"),
         )
         .arg(
-            Arg::with_name("nocheck")
-                .short("n")
+            Arg::new("nocheck")
+                .short('n')
                 .long("nocheck")
-                .help("Don't check for inconsistencies")
+                .about("Don't check for inconsistencies")
                 .takes_value(false),
         )
         .arg(
-            Arg::with_name("assume-yes")
-                .short("y")
+            Arg::new("assume-yes")
+                .short('y')
                 .long("assume-yes")
-                .help("Assumes yes as a answer for all questions")
+                .about("Assumes yes as a answer for questions")
                 .takes_value(false),
         )
         .arg(
-            Arg::with_name("dryrun")
-                .short("d")
+            Arg::new("dryrun")
+                .short('d')
                 .long("dryrun")
-                .help("Only check files don't change anything")
+                .about("Only check files don't change anything")
                 .takes_value(false)
                 .conflicts_with("assume-yes"),
         )
         .arg(
-            Arg::with_name("verbosity")
-                .short("v")
+            Arg::new("verbosity")
+                .short('v')
                 .long("verbosity")
                 .value_name("level")
-                .help("Verbosity level of the output. 0 means least 2 means most verbose ouput.")
+                .about("Verbosity level of the output. 0 means least 2 means most verbose ouput.")
                 .takes_value(true)
                 .possible_values(&["0", "1", "2"])
                 .default_value("1"),
         )
         .arg(
-            Arg::with_name("generate-completion")
-                .short("g")
+            Arg::new("generate-completion")
+                .short('g')
                 .long("generate-completion")
                 .value_name("shell")
-                .help("Generates a completion script for the specified shell")
+                .about("Generates a completion script for the specified shell")
                 .conflicts_with("music-dir")
-                .requires("output-dir")
                 .takes_value(true)
-                .possible_values(&["bash", "zsh", "fish", "elvish", "powershell"]),
+                .possible_values(&[BASH, ZSH, FISH, ELVISH, PWRSH]),
         );
 
     let matches = app.clone().get_matches();
-    let generate_completion = matches.value_of("generate-completion").unwrap_or("");
 
-    if generate_completion != "" {
-        let output_dir = PathBuf::from(matches.value_of("output-dir").unwrap());
-        if !output_dir.exists() {
-            match std::fs::create_dir_all(&output_dir) {
-                Ok(_) => println!("created dir: {}", output_dir.display()),
-                Err(e) => println!("error creating dir: {}\n{}", output_dir.display(), e),
-            }
+    let generate_completion = matches.value_of("generate-completion");
+    if let Some(shell) = generate_completion {
+        let mut stdout = std::io::stdout();
+        match shell {
+            BASH => generate::<Bash, _>(&mut app, BIN_NAME, &mut stdout),
+            ELVISH => generate::<Elvish, _>(&mut app, BIN_NAME, &mut stdout),
+            FISH => generate::<Fish, _>(&mut app, BIN_NAME, &mut stdout),
+            ZSH => generate::<Zsh, _>(&mut app, BIN_NAME, &mut stdout),
+            PWRSH => generate::<PowerShell, _>(&mut app, BIN_NAME, &mut stdout),
+            _ => unreachable!(),
         }
 
-        println!("generating completions...");
-        let shell = Shell::from_str(generate_completion).unwrap();
-        app.gen_completions("music_organizer", shell, output_dir);
         println!("done");
         exit(0);
     }
+
     let abs_music_dir = {
         let music_dir = PathBuf::from(matches.value_of("music-dir").unwrap());
         match PathBuf::from(&music_dir).canonicalize() {
