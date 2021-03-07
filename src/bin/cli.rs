@@ -116,12 +116,12 @@ fn main() {
         exit(0);
     }
 
-    let abs_music_dir = {
-        let music_dir = PathBuf::from(matches.value_of("music-dir").unwrap());
-        match PathBuf::from(&music_dir).canonicalize() {
+    let music_dir = {
+        let dir = PathBuf::from(matches.value_of("music-dir").unwrap());
+        match PathBuf::from(&dir).canonicalize() {
             Ok(t) => t,
             Err(e) => {
-                println!("Not a valid music dir path: {}\n{:?}", music_dir.display(), e);
+                println!("Not a valid music dir path: {}\n{:?}", dir.display(), e);
                 exit(1)
             }
         }
@@ -137,11 +137,8 @@ fn main() {
                     .expect("could not retrieve working directory"),
             }
         }
-        None => abs_music_dir.clone(),
+        None => music_dir.clone(),
     };
-
-    println!("music dir: {}", abs_music_dir.display());
-    println!("output dir: {}", output_dir.display());
 
     let verbosity = matches.value_of("verbosity").map(|v| v.parse::<usize>().unwrap()).unwrap_or(0);
     let op_type = match matches.is_present("copy") {
@@ -160,7 +157,7 @@ fn main() {
     println!("============================================================");
     println!("# Indexing");
     println!("============================================================");
-    let mut index = MusicIndex::from(abs_music_dir.clone());
+    let mut index = MusicIndex::from(music_dir.clone());
 
     for (i, m) in &mut index.read_iter().enumerate() {
         print_verbose(
@@ -221,7 +218,7 @@ fn main() {
                 println!(
                     "{} {}",
                     (i + 1).to_string().blue(),
-                    format_file_op(&abs_music_dir, &output_dir, f, op_type_sim_pres, verbosity)
+                    format_file_op(&music_dir, &output_dir, f, op_type_sim_pres, verbosity)
                 );
             }
             println!();
@@ -278,7 +275,7 @@ fn main() {
                 let s = format!(
                     "{} {}",
                     (i + 1).to_string().blue(),
-                    format_file_op(&abs_music_dir, &output_dir, f, op_type_sim_past, verbosity)
+                    format_file_op(&music_dir, &output_dir, f, op_type_sim_past, verbosity)
                 );
                 print_verbose(&s, verbosity >= 2);
             }
@@ -288,7 +285,7 @@ fn main() {
                     "{} {} {}:\n{}",
                     (i + 1).to_string().blue(),
                     "error".red(),
-                    format_file_op(&abs_music_dir, &output_dir, f, op_type_pres_prog, 2),
+                    format_file_op(&music_dir, &output_dir, f, op_type_pres_prog, 2),
                     e.to_string().red(),
                 );
             }
