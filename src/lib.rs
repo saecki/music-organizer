@@ -235,10 +235,9 @@ impl<'a> From<&'a mut MusicIndex> for ReadMusicIndexIter<'a> {
             .filter_map(|e| {
                 let p = e.into_path();
 
-                if is_music_extension(p.extension().unwrap()) {
-                    Some(p)
-                } else {
-                    None
+                match p.extension().map(is_music_extension) {
+                    Some(true) => Some(p),
+                    _ => None,
                 }
             });
 
