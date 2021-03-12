@@ -30,7 +30,7 @@ fn main() {
     let mut app = App::new("music organizer")
         .version(crate_version!())
         .author(crate_authors!())
-        .about("Moves or copies and renames Music files using their metadata information.")
+        .about("Moves/copies, renames and retags Music files using their metadata.")
         .arg(
             Arg::new("music-dir")
                 .short('m')
