@@ -1,4 +1,4 @@
-use clap::{App, Arg, ValueHint};
+use clap::{crate_authors, crate_version, App, Arg, ValueHint};
 use clap_generate::generate;
 use clap_generate::generators::{Bash, Elvish, Fish, PowerShell, Zsh};
 use colored::Colorize;
@@ -28,8 +28,8 @@ static mut LAST_LEN: usize = 0;
 
 fn main() {
     let mut app = App::new("music organizer")
-        .version("0.1.0")
-        .author("Saecki")
+        .version(crate_version!())
+        .author(crate_authors!())
         .about("Moves or copies and renames Music files using their metadata information.")
         .arg(
             Arg::new("music-dir")
@@ -111,8 +111,6 @@ fn main() {
             PWRSH => generate::<PowerShell, _>(&mut app, BIN_NAME, &mut stdout),
             _ => unreachable!(),
         }
-
-        println!("done");
         exit(0);
     }
 
