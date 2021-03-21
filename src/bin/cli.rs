@@ -701,11 +701,12 @@ fn input_confirmation_loop(str: &str) -> bool {
         if let Err(e) = std::io::stdin().read_line(&mut input) {
             println!("error:\n {}", e);
         } else {
+            input.retain(|c| c != '\r' && c != '\n');
             input.make_ascii_lowercase();
 
-            if input == "\n" || input == "n\n" {
+            if input == "" || input == "n" {
                 return false;
-            } else if input == "y\n" {
+            } else if input == "y" {
                 return true;
             } else {
                 println!("invalid input");
