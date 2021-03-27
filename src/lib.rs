@@ -211,6 +211,14 @@ impl MusicIndex {
     pub fn read_iter<'a>(&'a mut self) -> ReadMusicIndexIter<'a> {
         ReadMusicIndexIter::from(self)
     }
+
+    pub fn check_missing_artwork(&self, f: &mut impl FnMut(&Song)) {
+        for s in &self.songs {
+            if !s.has_artwork {
+                f(s)
+            }
+        }
+    }
 }
 
 impl From<PathBuf> for MusicIndex {
@@ -260,6 +268,7 @@ impl<'a> Iterator for ReadMusicIndexIter<'a> {
                 total_discs: m.total_discs,
                 artist: m.artist.clone(),
                 title: m.title.clone(),
+                has_artwork: m.has_artwork,
                 path: p,
             };
 

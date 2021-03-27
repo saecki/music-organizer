@@ -21,6 +21,7 @@ pub struct Song {
     pub total_discs: Option<u16>,
     pub artist: Option<String>,
     pub title: Option<String>,
+    pub has_artwork: bool,
     pub path: PathBuf,
 }
 
@@ -34,6 +35,7 @@ pub struct Metadata {
     pub album_artist: Option<String>,
     pub album: Option<String>,
     pub title: Option<String>,
+    pub has_artwork: bool,
 }
 
 impl Metadata {
@@ -50,6 +52,7 @@ impl Metadata {
                         album_artist: tag.album_artist().map(|s| s.to_string()),
                         album: tag.album().map(|s| s.to_string()),
                         title: tag.title().map(|s| s.to_string()),
+                        has_artwork: tag.pictures().next().is_some(),
                     };
                 }
             }
@@ -64,6 +67,7 @@ impl Metadata {
                         album_artist: tag.album_artist().map(|s| s.to_string()),
                         album: tag.album().map(|s| s.to_string()),
                         title: tag.title().map(|s| s.to_string()),
+                        has_artwork: tag.artwork().is_some(),
                     };
                 }
             }
