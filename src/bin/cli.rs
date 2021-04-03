@@ -5,7 +5,7 @@ use colored::Colorize;
 
 use music_organizer::{
     meta::Metadata,
-    meta::{Album, Artist, Song},
+    meta::{Release, Artist, Song},
     Changes, FileOpType, FileOperation, MusicIndex, OptionAsStr,
 };
 
@@ -306,7 +306,7 @@ fn main() {
 fn inconsitent_artists_dialog(index: &MusicIndex, a: &Artist, b: &Artist) -> Option<String> {
     fn print(index: &MusicIndex, artist: &Artist) {
         println!("{}:", artist.name.as_str().yellow());
-        for (i, al) in artist.albums.iter().enumerate() {
+        for (i, al) in artist.releases.iter().enumerate() {
             if i == 10 {
                 println!("   {}", "...".green());
                 break;
@@ -372,10 +372,10 @@ fn inconsitent_artists_dialog(index: &MusicIndex, a: &Artist, b: &Artist) -> Opt
 fn inconsitent_albums_dialog(
     index: &MusicIndex,
     artist: &Artist,
-    a: &Album,
-    b: &Album,
+    a: &Release,
+    b: &Release,
 ) -> Option<String> {
-    fn print(index: &MusicIndex, album: &Album) {
+    fn print(index: &MusicIndex, album: &Release) {
         println!("   {}:", album.name.as_str().yellow());
         for s in album.songs.iter().map(|&si| &index.songs[si]) {
             println!(
@@ -432,7 +432,7 @@ fn inconsitent_albums_dialog(
 
 fn inconsitent_total_tracks_dialog(
     artist: &Artist,
-    album: &Album,
+    album: &Release,
     total_tracks: Vec<(Vec<&Song>, Option<u16>)>,
 ) -> Option<u16> {
     let msg = format!(
@@ -499,7 +499,7 @@ fn inconsitent_total_tracks_dialog(
 
 fn inconsitent_total_discs_dialog(
     artist: &Artist,
-    album: &Album,
+    album: &Release,
     total_discs: Vec<(Vec<&Song>, Option<u16>)>,
 ) -> Option<u16> {
     let msg = format!(

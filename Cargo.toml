@@ -1,6 +1,6 @@
 [package]
 name = "music_organizer"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Saecki <tobiasschmitz2001@gmail.com>"]
 edition = "2018"
 
@@ -12,7 +12,7 @@ checks = []
 clap = "3.0.0-beta.2"
 clap_generate = "3.0.0-beta.2"
 regex = "1.4.2"
-walkdir = "2.3.1"
+walkdir = "2.3.2"
 id3 = "0.6.2"
 mp4ameta = "0.9.1"
 lazy_static = "1.4.0"

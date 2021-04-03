@@ -1,6 +1,6 @@
 pub mod meta;
 
-use crate::meta::{Album, Artist, Metadata, Song};
+use crate::meta::{Artist, Metadata, Release, Song};
 use std::ffi::{OsStr, OsString};
 use std::iter::Iterator;
 use std::path::{Path, PathBuf};
@@ -283,54 +283,32 @@ impl<'a> Iterator for ReadMusicIndexIter<'a> {
                 return Some(m);
             };
 
-            let single_album_name = m.title.as_ref().map(|t| format!("{} - single", &t));
-            let is_single = match (&m.album, &single_album_name) {
-                (None, _) => true,
-                (Some(al_name), Some(s_al_name)) => {
-                    al_name.eq_ignore_ascii_case(s_al_name) || al_name.is_empty()
+            let release = match &m.album {
+                Some(rl) => rl.clone(),
+                None => {
+                    self.index.unknown.push(song_index);
+                    return Some(m);
                 }
-                _ => false,
             };
 
             for ar in &mut self.index.artists {
                 if ar.name == artist {
-                    if is_single {
-                        ar.singles.push(song_index);
-                    } else {
-                        for al in &mut ar.albums {
-                            if &al.name == m.album.opt_str() {
-                                al.songs.push(song_index);
-                                return Some(m);
-                            }
+                    for rl in &mut ar.releases {
+                        if &rl.name == &release {
+                            rl.songs.push(song_index);
+                            return Some(m);
                         }
-
-                        ar.albums.push(Album {
-                            // Has to be Some otherwise would be a single
-                            name: m.album.clone().unwrap(),
-                            songs: vec![song_index],
-                        });
                     }
+
+                    ar.releases.push(Release { name: release, songs: vec![song_index] });
                     return Some(m);
                 }
             }
 
-            if is_single {
-                self.index.artists.push(Artist {
-                    name: artist,
-                    singles: vec![song_index],
-                    albums: Vec::new(),
-                });
-            } else {
-                self.index.artists.push(Artist {
-                    name: artist,
-                    singles: Vec::new(),
-                    albums: vec![Album {
-                        // Has to be Some otherwise would be a single
-                        name: m.album.clone().unwrap(),
-                        songs: vec![song_index],
-                    }],
-                });
-            }
+            self.index.artists.push(Artist {
+                name: artist,
+                releases: vec![Release { name: release, songs: vec![song_index] }],
+            });
 
             return Some(m);
         }
@@ -400,8 +378,8 @@ impl Changes {
                 if ar1.name.eq_ignore_ascii_case(&ar2.name) {
                     if let Some(name) = f(index, ar1, ar2) {
                         if ar1.name != name {
-                            for album in ar1.albums.iter() {
-                                for song in album.songs.iter().map(|&si| &index.songs[si]) {
+                            for rl in ar1.releases.iter() {
+                                for song in rl.songs.iter().map(|&si| &index.songs[si]) {
                                     self.update_tag(&song.path, |tu| {
                                         tu.meta.artist = Some(name.clone())
                                     });
@@ -410,8 +388,8 @@ impl Changes {
                         }
 
                         if ar2.name != name {
-                            for album in ar2.albums.iter() {
-                                for song in album.songs.iter().map(|&si| &index.songs[si]) {
+                            for rl in ar2.releases.iter() {
+                                for song in rl.songs.iter().map(|&si| &index.songs[si]) {
                                     self.update_tag(&song.path, |tu| {
                                         tu.meta.artist = Some(name.clone())
                                     });
@@ -428,12 +406,12 @@ impl Changes {
     pub fn check_inconsitent_albums(
         &mut self,
         index: &MusicIndex,
-        f: fn(&MusicIndex, &Artist, &Album, &Album) -> Option<String>,
+        f: fn(&MusicIndex, &Artist, &Release, &Release) -> Option<String>,
     ) {
         for ar in index.artists.iter() {
             let mut offset = 1;
-            for al1 in ar.albums.iter() {
-                for al2 in ar.albums.iter().skip(offset) {
+            for al1 in ar.releases.iter() {
+                for al2 in ar.releases.iter().skip(offset) {
                     if al1.name.eq_ignore_ascii_case(&al2.name) {
                         if let Some(name) = f(index, ar, al1, al2) {
                             if al1.name != name {
@@ -462,10 +440,10 @@ impl Changes {
     pub fn check_inconsitent_total_tracks(
         &mut self,
         index: &MusicIndex,
-        f: fn(&Artist, &Album, Vec<(Vec<&Song>, Option<u16>)>) -> Option<u16>,
+        f: fn(&Artist, &Release, Vec<(Vec<&Song>, Option<u16>)>) -> Option<u16>,
     ) {
         for ar in index.artists.iter() {
-            for al in ar.albums.iter() {
+            for al in ar.releases.iter() {
                 let mut total_tracks: Vec<(Vec<&Song>, Option<u16>)> = Vec::new();
 
                 'songs: for s in al.songs.iter().map(|&si| &index.songs[si]) {
@@ -495,13 +473,13 @@ impl Changes {
     pub fn check_inconsitent_total_discs(
         &mut self,
         index: &MusicIndex,
-        f: fn(&Artist, &Album, Vec<(Vec<&Song>, Option<u16>)>) -> Option<u16>,
+        f: fn(&Artist, &Release, Vec<(Vec<&Song>, Option<u16>)>) -> Option<u16>,
     ) {
         for ar in index.artists.iter() {
-            for al in ar.albums.iter() {
+            for rl in ar.releases.iter() {
                 let mut total_discs: Vec<(Vec<&Song>, Option<u16>)> = Vec::new();
 
-                'songs: for s in al.songs.iter().map(|&si| &index.songs[si]) {
+                'songs: for s in rl.songs.iter().map(|&si| &index.songs[si]) {
                     for (songs, tt) in total_discs.iter_mut() {
                         if *tt == s.total_discs {
                             songs.push(s);
@@ -513,8 +491,8 @@ impl Changes {
                 }
 
                 if total_discs.len() > 1 {
-                    if let Some(t) = f(ar, al, total_discs) {
-                        for song in al.songs.iter().map(|&si| &index.songs[si]) {
+                    if let Some(t) = f(ar, rl, total_discs) {
+                        for song in rl.songs.iter().map(|&si| &index.songs[si]) {
                             if song.total_discs != meta::zero_none(Some(t)) {
                                 self.update_tag(&song.path, |tu| tu.meta.total_discs = Some(t));
                             }
@@ -531,33 +509,8 @@ impl Changes {
         }
 
         for ar in index.artists.iter() {
-            for song in ar.singles.iter().map(|&si| &index.songs[si]) {
-                let ar_name = self
-                    .tag_update(&song.path)
-                    .and_then(|t| t.meta.top_level_artist())
-                    .unwrap_or(&ar.name);
-                let ar_dir = output_dir.join(valid_os_string(ar_name));
-                self.check_dir_creation(&ar_dir);
-
-                let extension = song.path.extension().unwrap();
-                let mut file_name = OsString::with_capacity(
-                    4 + song.artist.len() + song.title.len() + extension.len(),
-                );
-
-                file_name.push(valid_os_string(song.artist.opt_str()));
-                file_name.push(" - ");
-                file_name.push(valid_os_string(song.title.opt_str()));
-                file_name.push(".");
-                file_name.push(extension);
-
-                let new_file = ar_dir.join(file_name);
-                if new_file != song.path {
-                    self.update_file_op(&song.path, |fo| fo.new = Some(new_file))
-                }
-            }
-
-            for al in ar.albums.iter() {
-                for song in al.songs.iter().map(|&si| &index.songs[si]) {
+            for rl in ar.releases.iter() {
+                for song in rl.songs.iter().map(|&si| &index.songs[si]) {
                     let ar_name = self
                         .tag_update(&song.path)
                         .and_then(|t| t.meta.top_level_artist())
@@ -565,12 +518,12 @@ impl Changes {
                     let ar_dir = output_dir.join(valid_os_string(ar_name));
                     self.check_dir_creation(&ar_dir);
 
-                    let al_name = self
+                    let rl_name = self
                         .tag_update(&song.path)
                         .and_then(|t| t.meta.album.as_ref())
-                        .unwrap_or(&al.name);
-                    let al_dir = ar_dir.join(valid_os_string(al_name));
-                    self.check_dir_creation(&al_dir);
+                        .unwrap_or(&rl.name);
+                    let rl_dir = ar_dir.join(valid_os_string(rl_name));
+                    self.check_dir_creation(&rl_dir);
 
                     let extension = song.path.extension().unwrap();
                     let mut file_name = OsString::with_capacity(
@@ -589,7 +542,7 @@ impl Changes {
                     file_name.push(".");
                     file_name.push(extension);
 
-                    let new_file = al_dir.join(file_name);
+                    let new_file = rl_dir.join(file_name);
                     if new_file != song.path {
                         self.update_file_op(&song.path, |fo| fo.new = Some(new_file))
                     }

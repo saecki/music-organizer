@@ -3,12 +3,11 @@ use std::path::PathBuf;
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Artist {
     pub name: String,
-    pub albums: Vec<Album>,
-    pub singles: Vec<usize>,
+    pub releases: Vec<Release>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Album {
+pub struct Release {
     pub name: String,
     pub songs: Vec<usize>,
 }
