@@ -180,14 +180,6 @@ fn main() {
             println!("============================================================");
             println!("# Checking");
             println!("============================================================");
-            let mut missing_artwork = false;
-            index.check_missing_artwork(&mut |s: &Song| {
-                if !missing_artwork {
-                    println!("Missing artwork:");
-                    missing_artwork = true;
-                }
-                println!("{}", s.path.display());
-            });
 
             changes.check_inconsitent_artists(&index, inconsitent_artists_dialog);
             changes.check_inconsitent_albums(&index, inconsitent_albums_dialog);
