@@ -1,8 +1,8 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Artist {
-    pub name: String,
+pub struct ReleaseArtists {
+    pub names: Vec<String>,
     pub releases: Vec<Release>,
 }
 
@@ -14,14 +14,26 @@ pub struct Release {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Song {
+    pub path: PathBuf,
     pub track_number: Option<u16>,
     pub total_tracks: Option<u16>,
     pub disc_number: Option<u16>,
     pub total_discs: Option<u16>,
-    pub artist: Option<String>,
-    pub title: Option<String>,
+    pub release_artists: Vec<String>,
+    pub artists: Vec<String>,
+    pub release: String,
+    pub title: String,
     pub has_artwork: bool,
-    pub path: PathBuf,
+}
+
+impl Song {
+    pub fn artists_str(&self) -> String {
+        artists_string(&self.artists)
+    }
+
+    pub fn release_artists_str(&self) -> String {
+        artists_string(&self.release_artists)
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -30,44 +42,24 @@ pub struct Metadata {
     pub total_tracks: Option<u16>,
     pub disc_number: Option<u16>,
     pub total_discs: Option<u16>,
-    pub artist: Option<String>,
-    pub album_artist: Option<String>,
-    pub album: Option<String>,
+    pub artists: Vec<String>,
+    pub release_artists: Vec<String>,
+    pub release: Option<String>,
     pub title: Option<String>,
     pub has_artwork: bool,
 }
 
 impl Metadata {
-    pub fn read_from(path: &PathBuf) -> Self {
+    pub fn read_from(path: &Path) -> Self {
         match path.extension().unwrap().to_str().unwrap() {
             "mp3" => {
-                if let Ok(tag) = id3::Tag::read_from_path(&path) {
-                    return Self {
-                        track_number: zero_none(tag.track().map(|u| u as u16)),
-                        total_tracks: zero_none(tag.total_tracks().map(|u| u as u16)),
-                        disc_number: zero_none(tag.disc().map(|u| u as u16)),
-                        total_discs: zero_none(tag.total_discs().map(|u| u as u16)),
-                        artist: tag.artist().map(|s| s.to_string()),
-                        album_artist: tag.album_artist().map(|s| s.to_string()),
-                        album: tag.album().map(|s| s.to_string()),
-                        title: tag.title().map(|s| s.to_string()),
-                        has_artwork: tag.pictures().next().is_some(),
-                    };
+                if let Some(meta) = Self::read_mp3(path) {
+                    return meta;
                 }
             }
             "m4a" | "m4b" | "m4p" | "m4v" => {
-                if let Ok(tag) = mp4ameta::Tag::read_from_path(&path) {
-                    return Self {
-                        track_number: tag.track_number(),
-                        total_tracks: tag.total_tracks(),
-                        disc_number: tag.disc_number(),
-                        total_discs: tag.total_discs(),
-                        artist: tag.artist().map(|s| s.to_string()),
-                        album_artist: tag.album_artist().map(|s| s.to_string()),
-                        album: tag.album().map(|s| s.to_string()),
-                        title: tag.title().map(|s| s.to_string()),
-                        has_artwork: tag.artwork().is_some(),
-                    };
+                if let Some(meta) = Self::read_mp4(path) {
+                    return meta;
                 }
             }
             _ => (),
@@ -76,11 +68,55 @@ impl Metadata {
         Self::default()
     }
 
-    pub fn top_level_artist(&self) -> Option<&String> {
-        if self.album_artist.is_some() {
-            self.album_artist.as_ref()
-        } else if self.artist.is_some() {
-            self.artist.as_ref()
+    fn read_mp3(path: &Path) -> Option<Self> {
+        let tag = id3::Tag::read_from_path(&path).ok()?;
+        let m = Self {
+            track_number: zero_none(tag.track().map(|u| u as u16)),
+            total_tracks: zero_none(tag.total_tracks().map(|u| u as u16)),
+            disc_number: zero_none(tag.disc().map(|u| u as u16)),
+            total_discs: zero_none(tag.total_discs().map(|u| u as u16)),
+            artists: tag.artist().map(|s| s.to_string()).into_iter().collect(),
+            release_artists: tag.album_artist().map(|s| s.to_string()).into_iter().collect(),
+            release: tag.album().map(|s| s.to_string()),
+            title: tag.title().map(|s| s.to_string()),
+            has_artwork: tag.pictures().next().is_some(),
+        };
+
+        Some(m)
+    }
+
+    fn read_mp4(path: &Path) -> Option<Self> {
+        let mut tag = mp4ameta::Tag::read_from_path(&path).ok()?;
+        let m = Self {
+            track_number: tag.track_number(),
+            total_tracks: tag.total_tracks(),
+            disc_number: tag.disc_number(),
+            total_discs: tag.total_discs(),
+            artists: tag.take_artists().collect(),
+            release_artists: tag.take_album_artists().collect(),
+            release: tag.take_album(),
+            title: tag.take_title(),
+            has_artwork: tag.artwork().is_some(),
+        };
+
+        Some(m)
+    }
+
+    pub fn release_artists(&self) -> Option<&[String]> {
+        if !self.release_artists.is_empty() {
+            Some(&self.release_artists)
+        } else if !self.artists.is_empty() {
+            Some(&self.artists)
+        } else {
+            None
+        }
+    }
+
+    pub fn song_artists(&self) -> Option<&[String]> {
+        if !self.artists.is_empty() {
+            Some(&self.artists)
+        } else if !self.release_artists.is_empty() {
+            Some(&self.release_artists)
         } else {
             None
         }
@@ -93,4 +129,17 @@ pub fn zero_none(n: Option<u16>) -> Option<u16> {
         0 => None,
         _ => Some(n),
     })
+}
+
+fn artists_string(artists: &[String]) -> String {
+    let mut string = artists[0].clone();
+
+    if artists.len() > 1 {
+        for a in &artists[1..] {
+            string.push_str(", ");
+            string.push_str(a);
+        }
+    }
+
+    string
 }
