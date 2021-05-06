@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::{error, io};
 use walkdir::WalkDir;
 
-use crate::fs::valid_os_string;
+use crate::fs::{valid_os_str, valid_os_str_dots};
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct MusicIndex {
@@ -27,7 +27,7 @@ impl MusicIndex {
         ReadMusicIndexIter::from(self).count()
     }
 
-    pub fn read_iter<'a>(&'a mut self) -> ReadMusicIndexIter<'a> {
+    pub fn read_iter(&mut self) -> ReadMusicIndexIter<'_> {
         ReadMusicIndexIter::from(self)
     }
 
@@ -96,7 +96,7 @@ impl<'a> Iterator for ReadMusicIndexIter<'a> {
             };
 
             let release = match &m.release {
-                Some(rl) => rl.clone(),
+                Some(rl) => rl,
                 None => {
                     self.index.unknown.push(p.clone());
                     return Some(p);
@@ -116,12 +116,12 @@ impl<'a> Iterator for ReadMusicIndexIter<'a> {
                 total_tracks: m.total_tracks,
                 disc_number: m.disc_number,
                 total_discs: m.total_discs,
-                release_artists: release_artists.to_vec(),
-                artists: song_artists.to_vec(),
+                release_artists: release_artists.to_owned(),
+                artists: song_artists.to_owned(),
                 release: release.to_owned(),
-                title: title.clone(),
+                title: title.to_owned(),
                 has_artwork: m.has_artwork,
-                path: p.clone(),
+                path: p.to_owned(),
             });
 
             return Some(p);
@@ -139,18 +139,18 @@ pub struct Changes {
 
 impl Changes {
     pub fn file_op(&self, path: &Path) -> Option<&FileOperation> {
-        self.file_operations.iter().find(|f| &f.old == path)
+        self.file_operations.iter().find(|f| f.old == path)
     }
 
     //pub fn tag_update(&self, path: &Path) -> Option<&TagUpdate> {
     //    self.file_op(path).and_then(|f| f.tag_update.as_ref())
     //}
 
-    pub fn update_file_op(&mut self, path: &PathBuf, f: impl FnOnce(&mut FileOperation)) {
-        match self.file_operations.iter_mut().find(|f| &f.old == path) {
+    pub fn update_file_op(&mut self, path: &Path, f: impl FnOnce(&mut FileOperation)) {
+        match self.file_operations.iter_mut().find(|f| f.old == path) {
             Some(fo) => f(fo),
             None => {
-                let mut fo = FileOperation { old: path.clone(), ..Default::default() };
+                let mut fo = FileOperation { old: path.to_owned(), ..Default::default() };
 
                 f(&mut fo);
 
@@ -172,9 +172,9 @@ impl Changes {
     //    });
     //}
 
-    pub fn check_dir_creation(&mut self, path: &PathBuf) -> bool {
-        if !self.dir_creations.iter().any(|d| &d.path == path) && !path.exists() {
-            self.dir_creations.push(DirCreation { path: path.clone() });
+    pub fn check_dir_creation(&mut self, path: &Path) -> bool {
+        if !self.dir_creations.iter().any(|d| d.path == path) && !path.exists() {
+            self.dir_creations.push(DirCreation { path: path.to_owned() });
             true
         } else {
             false
@@ -358,21 +358,19 @@ impl Changes {
     //    }
     //}
 
-    pub fn file_system(&mut self, index: &MusicIndex, output_dir: &PathBuf) {
+    pub fn file_system(&mut self, index: &MusicIndex, output_dir: &Path) {
         if !output_dir.exists() {
-            self.dir_creations.push(DirCreation { path: output_dir.clone() })
+            self.dir_creations.push(DirCreation { path: output_dir.to_owned() })
         }
 
         for song in index.songs.iter() {
-            let release_artists = valid_os_string(&song.release_artists_str());
-            let artists = valid_os_string(&song.artists_str());
-            let release = valid_os_string(&song.release);
-            let title = valid_os_string(&song.title);
+            let release_artists = valid_os_str_dots(&song.release_artists_str());
+            let release = valid_os_str_dots(&song.release);
+
+            let artists = valid_os_str(&song.artists_str());
+            let title = valid_os_str(&song.title);
             let extension = song.path.extension().unwrap();
-            let track = match song.track_number {
-                Some(n) => n,
-                _ => 0,
-            };
+            let track = song.track_number.unwrap_or(0);
 
             let mut path = output_dir.join(&release_artists);
             self.check_dir_creation(&path);
@@ -382,9 +380,9 @@ impl Changes {
 
             let mut file_name = OsString::new();
             file_name.push(format!("{:02} - ", track));
-            file_name.push(artists);
+            file_name.push(&artists);
             file_name.push(" - ");
-            file_name.push(title);
+            file_name.push(&title);
             file_name.push(".");
             file_name.push(extension);
 

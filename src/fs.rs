@@ -1,8 +1,10 @@
 use std::error;
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsStr;
 use std::fs;
 use std::io;
 use std::path::PathBuf;
+
+use regex::Regex;
 
 use crate::update::TagUpdate;
 
@@ -62,21 +64,30 @@ impl From<bool> for FileOpType {
 }
 
 lazy_static::lazy_static! {
-    static ref RE: regex::Regex = regex::Regex::new(r#"[<>:"/\|?*]"#).unwrap();
+    static ref RE: Regex = Regex::new(r#"[<>:"/\|?*]"#).unwrap();
 }
 
-pub fn valid_os_string(str: &str) -> OsString {
+#[inline]
+pub fn valid_os_str_dots(str: &str) -> String {
     let mut s = RE.replace_all(str, "").to_string();
 
     if s.starts_with('.') {
-        s.replace_range(0..1, "_");
+        // This is safe because we know that the first byte has to be present and is character of 1 byte length.
+        unsafe {
+            s.as_bytes_mut()[0] = b'_';
+        }
     }
-
     if s.ends_with('.') {
-        s.replace_range(s.len() - 1..s.len(), "_");
+        s.pop();
+        s.push('_');
     }
 
-    OsString::from(s)
+    s
+}
+
+#[inline]
+pub fn valid_os_str(str: &str) -> String {
+    RE.replace_all(str, "").trim().to_string()
 }
 
 #[inline]

@@ -698,7 +698,7 @@ fn input_confirmation_loop(str: &str) -> bool {
             input.retain(|c| c != '\r' && c != '\n');
             input.make_ascii_lowercase();
 
-            if input == "" || input == "n" {
+            if input.is_empty() || input == "n" {
                 return false;
             } else if input == "y" {
                 return true;
