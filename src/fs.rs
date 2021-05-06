@@ -8,8 +8,6 @@ use regex::Regex;
 
 use crate::update::TagUpdate;
 
-const MUSIC_FILE_EXTENSIONS: [&str; 5] = ["m4a", "mp3", "m4b", "m4p", "m4v"];
-
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct DirCreation {
     pub path: PathBuf,
@@ -18,6 +16,17 @@ pub struct DirCreation {
 impl DirCreation {
     pub fn execute(&self) -> Result<(), io::Error> {
         std::fs::create_dir(&self.path)
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DirDeletion {
+    pub path: PathBuf,
+}
+
+impl DirDeletion {
+    pub fn execute(&self) -> Result<(), io::Error> {
+        std::fs::remove_dir(&self.path)
     }
 }
 
@@ -90,9 +99,23 @@ pub fn valid_os_str(str: &str) -> String {
     RE.replace_all(str, "").trim().to_string()
 }
 
+const MUSIC_FILE_EXTENSIONS: [&str; 2] = ["m4a", "mp3"];
+
 #[inline]
 pub fn is_music_extension(s: &OsStr) -> bool {
     for e in &MUSIC_FILE_EXTENSIONS {
+        if s.eq(*e) {
+            return true;
+        }
+    }
+
+    false
+}
+
+const IMAGE_FILE_EXTENSIONS: [&str; 3] = ["png", "jpg", "jpeg"];
+#[inline]
+pub fn is_image_extension(s: &OsStr) -> bool {
+    for e in &IMAGE_FILE_EXTENSIONS {
         if s.eq(*e) {
             return true;
         }

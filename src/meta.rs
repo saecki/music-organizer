@@ -57,7 +57,7 @@ impl Metadata {
                     return meta;
                 }
             }
-            "m4a" | "m4b" | "m4p" | "m4v" => {
+            "m4a" => {
                 if let Some(meta) = Self::read_mp4(path) {
                     return meta;
                 }
@@ -75,8 +75,14 @@ impl Metadata {
             total_tracks: zero_none(tag.total_tracks().map(|u| u as u16)),
             disc_number: zero_none(tag.disc().map(|u| u as u16)),
             total_discs: zero_none(tag.total_discs().map(|u| u as u16)),
-            artists: tag.artist().map(|s| s.to_string()).into_iter().collect(),
-            release_artists: tag.album_artist().map(|s| s.to_string()).into_iter().collect(),
+            artists: tag
+                .artist()
+                .map(|s| s.split('\u{0}').map(|s| s.to_string()).collect())
+                .unwrap_or(Vec::new()),
+            release_artists: tag
+                .album_artist()
+                .map(|s| s.split('\u{0}').map(|s| s.to_string()).collect())
+                .unwrap_or(Vec::new()),
             release: tag.album().map(|s| s.to_string()),
             title: tag.title().map(|s| s.to_string()),
             has_artwork: tag.pictures().next().is_some(),

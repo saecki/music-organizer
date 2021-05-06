@@ -3,7 +3,7 @@ use clap_generate::generate;
 use clap_generate::generators::{Bash, Elvish, Fish, PowerShell, Zsh};
 use colored::Colorize;
 
-use music_organizer::{Changes, FileOpType, FileOperation, MusicIndex};
+use music_organizer::{Changes, Cleanup, FileOpType, FileOperation, MusicIndex};
 
 use std::{
     io::Write,
@@ -54,6 +54,12 @@ fn main() {
             Arg::new("nocheck")
                 .short('n')
                 .long("nocheck")
+                .about("Don't check for inconsistencies")
+                .takes_value(false),
+        )
+        .arg(
+            Arg::new("nocleanup")
+                .long("nocleanup")
                 .about("Don't check for inconsistencies")
                 .takes_value(false),
         )
@@ -133,13 +139,14 @@ fn main() {
         None => music_dir.clone(),
     };
 
-    let verbosity = matches.value_of("verbosity").map(|v| v.parse::<usize>().unwrap()).unwrap_or(0);
+    let verbosity = matches.value_of("verbosity").map(|v| v.parse::<usize>().unwrap()).unwrap_or(1);
     let op_type = match matches.is_present("copy") {
         true => FileOpType::Copy,
         false => FileOpType::Move,
     };
     let yes = matches.is_present("assume-yes");
     let nocheck = matches.is_present("nocheck");
+    let nocleanup = matches.is_present("nocleanup");
     let dryrun = matches.is_present("dryrun");
 
     let (op_type_sim_pres, op_type_pres_prog, op_type_sim_past) = match op_type {
@@ -152,134 +159,197 @@ fn main() {
     println!("============================================================");
     let mut index = MusicIndex::from(music_dir.clone());
 
-    for (i, p) in &mut index.read_iter().enumerate() {
+    let mut i = 1;
+    index.read(&mut |p| {
         print_verbose(
-            &format!("{} {}", (i + 1).to_string().blue(), p.display().to_string().green()),
+            &format!("{} {}", (i + 1).to_string().blue(), strip_dir(&p, &music_dir).green()),
             verbosity >= 2,
         );
-    }
+        i += 1;
+    });
     reset_print_verbose();
     println!();
 
     let mut changes = Changes::default();
 
-    #[cfg(feature = "checks")]
-    {
-        if !nocheck {
-            println!("============================================================");
-            println!("# Checking");
-            println!("============================================================");
+    if !nocheck {
+        println!("============================================================");
+        println!("# Checking");
+        println!("============================================================");
 
-            //changes.check_inconsitent_release_artists(&index, inconsitent_artists_dialog);
-            //changes.check_inconsitent_albums(&index, inconsitent_albums_dialog);
-            //changes.check_inconsitent_total_tracks(&index, inconsitent_total_tracks_dialog);
-            //changes.check_inconsitent_total_discs(&index, inconsitent_total_discs_dialog);
-            println!();
-        }
+        //changes.check_inconsitent_release_artists(&index, inconsitent_artists_dialog);
+        //changes.check_inconsitent_albums(&index, inconsitent_albums_dialog);
+        //changes.check_inconsitent_total_tracks(&index, inconsitent_total_tracks_dialog);
+        //changes.check_inconsitent_total_discs(&index, inconsitent_total_discs_dialog);
+        println!();
     }
 
     changes.file_system(&index, &output_dir);
 
     if changes.dir_creations.is_empty() && changes.file_operations.is_empty() {
-        println!("{}", "nothing to do exiting...".green());
-        return;
-    }
-    println!("============================================================");
-    println!("# Changes");
-    println!("============================================================");
-
-    if verbosity >= 1 {
-        if !changes.dir_creations.is_empty() {
-            println!("dirs:");
-            for (i, d) in changes.dir_creations.iter().enumerate() {
-                println!(
-                    "{} create {}",
-                    (i + 1).to_string().blue(),
-                    format!("{}", d.path.display()).green()
-                );
+        println!("{}", "nothing to do".green());
+    } else {
+        println!("============================================================");
+        println!("# Changes");
+        println!("============================================================");
+        if verbosity >= 1 {
+            if !changes.dir_creations.is_empty() {
+                println!("dirs:");
+                for (i, d) in changes.dir_creations.iter().enumerate() {
+                    println!(
+                        "{} create {}",
+                        (i + 1).to_string().blue(),
+                        format!("{}", d.path.display()).green()
+                    );
+                }
+                println!();
             }
-            println!();
-        }
-        if !changes.file_operations.is_empty() {
-            println!("files:");
-            for (i, f) in changes.file_operations.iter().enumerate() {
-                println!(
-                    "{} {}",
-                    (i + 1).to_string().blue(),
-                    format_file_op(&music_dir, &output_dir, f, op_type_sim_pres, verbosity)
-                );
-            }
-            println!();
-        }
-    }
-
-    println!(
-        "{} dirs will be created.\n{} files will be {}.",
-        changes.dir_creations.len(),
-        changes.file_operations.len(),
-        op_type_sim_past,
-    );
-
-    if dryrun {
-        println!("dryrun, exiting...");
-        exit(0);
-    } else if !yes {
-        let ok = input_confirmation_loop("Continue");
-
-        if !ok {
-            println!("exiting...");
-            exit(0);
-        }
-    }
-
-    println!("============================================================");
-    println!("# Writing");
-    println!("============================================================");
-    for (i, (d, r)) in changes.dir_creation_iter().enumerate() {
-        match r {
-            Ok(_) => {
-                print_verbose(
-                    &format!("{} created dir {}", (i + 1).to_string().blue(), d.path.display()),
-                    verbosity >= 2,
-                );
-            }
-            Err(e) => {
-                reset_print_verbose();
-                println!(
-                    "{} {} creating dir {}:\n{}",
-                    (i + 1).to_string().blue(),
-                    "error".red(),
-                    d.path.display(),
-                    e.to_string().red()
-                );
+            if !changes.file_operations.is_empty() {
+                println!("files:");
+                for (i, f) in changes.file_operations.iter().enumerate() {
+                    println!(
+                        "{} {}",
+                        (i + 1).to_string().blue(),
+                        format_file_op(&music_dir, &output_dir, f, op_type_sim_pres, verbosity)
+                    );
+                }
+                println!();
             }
         }
-    }
-    reset_print_verbose();
 
-    for (i, (f, r)) in changes.file_operation_iter(op_type).enumerate() {
-        match r {
-            Ok(_) => {
-                let s = format!(
-                    "{} {}",
-                    (i + 1).to_string().blue(),
-                    format_file_op(&music_dir, &output_dir, f, op_type_sim_past, verbosity)
-                );
-                print_verbose(&s, verbosity >= 2);
+        println!(
+            "{} dirs will be created.\n{} files will be {}.",
+            changes.dir_creations.len(),
+            changes.file_operations.len(),
+            op_type_sim_past,
+        );
+
+        if !yes {
+            let ok = input_confirmation_loop("continue");
+
+            if !ok {
+                println!("exiting...");
+                exit(0);
             }
-            Err(e) => {
-                reset_print_verbose();
-                println!(
-                    "{} {} {}:\n{}",
-                    (i + 1).to_string().blue(),
-                    "error".red(),
-                    format_file_op(&music_dir, &output_dir, f, op_type_pres_prog, 2),
-                    e.to_string().red(),
-                );
+        }
+
+        if dryrun {
+            println!("skip writing dryrun...");
+        } else {
+            println!("============================================================");
+            println!("# Writing");
+            println!("============================================================");
+            let mut i = 1;
+            changes.create_dirs(&mut |d, r| {
+                match r {
+                    Ok(_) => {
+                        print_verbose(
+                            &format!(
+                                "{} created dir {}",
+                                (i + 1).to_string().blue(),
+                                d.path.display()
+                            ),
+                            verbosity >= 2,
+                        );
+                    }
+                    Err(e) => {
+                        reset_print_verbose();
+                        println!(
+                            "{} {} creating dir {}:\n{}",
+                            (i + 1).to_string().blue(),
+                            "error".red(),
+                            d.path.display(),
+                            e.to_string().red()
+                        );
+                    }
+                }
+
+                i += 1;
+            });
+            reset_print_verbose();
+
+            let mut i = 1;
+            changes.file_operations(op_type, &mut |f, r| {
+                match r {
+                    Ok(_) => {
+                        let s = format!(
+                            "{} {}",
+                            (i + 1).to_string().blue(),
+                            format_file_op(&music_dir, &output_dir, f, op_type_sim_past, verbosity)
+                        );
+                        print_verbose(&s, verbosity >= 2);
+                    }
+                    Err(e) => {
+                        reset_print_verbose();
+                        println!(
+                            "{} {} {}:\n{}",
+                            (i + 1).to_string().blue(),
+                            "error".red(),
+                            format_file_op(&music_dir, &output_dir, f, op_type_pres_prog, 2),
+                            e.to_string().red(),
+                        );
+                    }
+                }
+
+                i += 1;
+            });
+            reset_print_verbose();
+        }
+    }
+
+    if !nocleanup {
+        println!("============================================================");
+        println!("# Cleanup");
+        println!("============================================================");
+        let mut cleanup = Cleanup::from(music_dir.clone());
+        let mut i = 1;
+        cleanup.check(&mut |p| {
+            print_verbose(
+                &format!("{} {}", i.to_string().blue(), strip_dir(p, &music_dir).green()),
+                verbosity == 2,
+            );
+
+            i += 1;
+        });
+        reset_print_verbose();
+        println!();
+
+        if cleanup.dir_deletions.is_empty() {
+            println!("{}", "nothing to cleanup".green());
+        } else {
+            if verbosity >= 1 {
+                if !cleanup.dir_deletions.is_empty() {
+                    println!("dirs:");
+
+                    for (i, d) in cleanup.dir_deletions.iter().enumerate() {
+                        println!(
+                            "{} delete {}",
+                            (i + 1).to_string().blue(),
+                            strip_dir(&d.path, &music_dir).red(),
+                        );
+                    }
+                    println!();
+                }
+            }
+
+            println!("{} dirs will be created.", cleanup.dir_deletions.len());
+
+            if !yes {
+                let ok = input_confirmation_loop("continue");
+
+                if !ok {
+                    println!("exiting...");
+                    exit(0);
+                }
+            }
+
+            if dryrun {
+                println!("skip cleaning up dryrun...");
+            } else {
+                cleanup.excecute();
             }
         }
     }
-    reset_print_verbose();
 
     println!("done");
 }
@@ -556,11 +626,8 @@ fn format_file_op(
     op_type_str: &str,
     _verbosity: usize,
 ) -> String {
-    let old_path = format!("{}", file_op.old.strip_prefix(music_dir).unwrap().display()).yellow();
-    let new = file_op
-        .new
-        .as_ref()
-        .map(|n| format!("{}", n.strip_prefix(output_dir).unwrap().display()).green());
+    let old_path = strip_dir(&file_op.old, music_dir).yellow();
+    let new = file_op.new.as_ref().map(|n| strip_dir(n, output_dir).green());
 
     match (&new, &file_op.tag_update) {
         (Some(new_path), Some(_tag_update)) => format!(
@@ -707,4 +774,8 @@ fn input_confirmation_loop(str: &str) -> bool {
             }
         }
     }
+}
+
+fn strip_dir(path: &Path, dir: &Path) -> String {
+    path.strip_prefix(dir).unwrap().display().to_string()
 }
