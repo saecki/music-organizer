@@ -1,12 +1,12 @@
-use std::error;
 use std::ffi::OsStr;
 use std::fs;
 use std::io;
 use std::path::PathBuf;
+use std::{error, path::Path};
 
 use regex::Regex;
 
-use crate::update::TagUpdate;
+use crate::{update::TagUpdate, Song};
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct DirCreation {
@@ -30,34 +30,58 @@ impl DirDeletion {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct FileOperation {
-    pub old: PathBuf,
-    pub new: Option<PathBuf>,
+#[derive(Clone, Debug, PartialEq)]
+pub struct SongOperation<'a> {
+    pub song: &'a Song,
     pub tag_update: Option<TagUpdate>,
+    pub new_path: Option<PathBuf>,
 }
 
-impl FileOperation {
+impl SongOperation<'_> {
     pub fn execute(&self, op_type: FileOpType) -> Result<(), Box<dyn error::Error>> {
-        if let Some(new) = &self.new {
+        if let Some(new) = &self.new_path {
             match op_type {
-                FileOpType::Copy => fs::copy(&self.old, new).map(|_| ())?,
-                FileOpType::Move => fs::rename(&self.old, new)?,
+                FileOpType::Copy => {
+                    fs::copy(&self.song.path, new)?;
+                }
+                FileOpType::Move => {
+                    fs::rename(&self.song.path, new)?;
+                }
             };
         }
 
-        //if let Some(u) = &self.tag_update {
-        //    match &self.new {
-        //        Some(n) => u.execute(n)?,
-        //        None => u.execute(&self.old)?,
-        //    }
-        //}
+        if let Some(u) = &self.tag_update {
+            match &self.new_path {
+                Some(n) => u.execute(n)?,
+                None => u.execute(&self.song.path)?,
+            }
+        }
 
         Ok(())
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
+pub struct FileOperation<'a> {
+    pub old_path: &'a Path,
+    pub new_path: PathBuf,
+}
+
+impl FileOperation<'_> {
+    pub fn execute(&self, op_type: FileOpType) -> Result<(), Box<dyn error::Error>> {
+        match op_type {
+            FileOpType::Copy => {
+                fs::copy(&self.old_path, &self.new_path)?;
+            }
+            FileOpType::Move => {
+                fs::rename(&self.old_path, &self.new_path)?;
+            }
+        };
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum FileOpType {
     Move,
     Copy,

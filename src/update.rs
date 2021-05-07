@@ -7,8 +7,8 @@ pub struct TagUpdate {
     pub disc_number: Value<u16>,
     pub total_discs: Value<u16>,
     pub artists: Value<Vec<String>>,
-    pub album_artists: Value<Vec<String>>,
-    pub album: Value<String>,
+    pub release_artists: Value<Vec<String>>,
+    pub release: Value<String>,
     pub title: Value<String>,
 }
 
@@ -18,6 +18,8 @@ pub enum Value<T> {
     Remove,
     Unchanged,
 }
+
+impl<T: Copy> Copy for Value<T> {}
 
 impl<T> Default for Value<T> {
     fn default() -> Self {
@@ -40,17 +42,17 @@ impl TagUpdate {
             "mp3" => {
                 let tag = match id3::Tag::read_from_path(path) {
                     Ok(mut tag) => {
-                        match &self.album_artists {
+                        match &self.release_artists {
                             Value::Update(a) => tag.set_album_artist(a.join("\u{0}")),
                             Value::Remove => tag.remove_album_artist(),
                             Value::Unchanged => (),
                         }
-                        match &self.album_artists {
+                        match &self.release_artists {
                             Value::Update(a) => tag.set_artist(a.join("\u{0}")),
                             Value::Remove => tag.remove_artist(),
                             Value::Unchanged => (),
                         }
-                        match &self.album {
+                        match &self.release {
                             Value::Update(a) => tag.set_album(a),
                             Value::Remove => tag.remove_album(),
                             Value::Unchanged => (),
@@ -91,7 +93,7 @@ impl TagUpdate {
             "m4a" | "m4b" | "m4p" | "m4v" => {
                 let tag = match mp4ameta::Tag::read_from_path(path) {
                     Ok(mut tag) => {
-                        match &self.album_artists {
+                        match &self.release_artists {
                             Value::Update(a) => tag.set_album_artists(a.clone()),
                             Value::Remove => tag.remove_album_artists(),
                             Value::Unchanged => (),
@@ -101,7 +103,7 @@ impl TagUpdate {
                             Value::Remove => tag.remove_artists(),
                             Value::Unchanged => (),
                         }
-                        match &self.album {
+                        match &self.release {
                             Value::Update(a) => tag.set_album(a),
                             Value::Remove => tag.remove_album(),
                             Value::Unchanged => (),

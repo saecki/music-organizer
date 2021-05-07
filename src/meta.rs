@@ -1,15 +1,15 @@
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct ReleaseArtists {
-    pub names: Vec<String>,
-    pub releases: Vec<Release>,
+pub struct ReleaseArtists<'a> {
+    pub names: &'a [String],
+    pub releases: Vec<Release<'a>>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Release {
-    pub name: String,
-    pub songs: Vec<usize>,
+pub struct Release<'a> {
+    pub name: &'a str,
+    pub songs: Vec<&'a Song>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -28,11 +28,11 @@ pub struct Song {
 
 impl Song {
     pub fn artists_str(&self) -> String {
-        artists_string(&self.artists)
+        self.artists.join(", ")
     }
 
     pub fn release_artists_str(&self) -> String {
-        artists_string(&self.release_artists)
+        self.release_artists.join(", ")
     }
 }
 
@@ -135,17 +135,4 @@ pub fn zero_none(n: Option<u16>) -> Option<u16> {
         0 => None,
         _ => Some(n),
     })
-}
-
-fn artists_string(artists: &[String]) -> String {
-    let mut string = artists[0].clone();
-
-    if artists.len() > 1 {
-        for a in &artists[1..] {
-            string.push_str(", ");
-            string.push_str(a);
-        }
-    }
-
-    string
 }

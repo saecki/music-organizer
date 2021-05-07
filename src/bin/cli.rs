@@ -2,14 +2,12 @@ use clap::{crate_authors, crate_version, App, Arg, ValueHint};
 use clap_generate::generate;
 use clap_generate::generators::{Bash, Elvish, Fish, PowerShell, Zsh};
 use colored::Colorize;
-
-use music_organizer::{Changes, Cleanup, FileOpType, FileOperation, MusicIndex};
-
-use std::{
-    io::Write,
-    path::{Path, PathBuf},
-    process::exit,
+use music_organizer::{
+    Changes, Checks, Cleanup, FileOpType, MusicIndex, Song, SongOperation, TagUpdate, Value,
 };
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::process::exit;
 
 const BIN_NAME: &str = "music_organizer";
 
@@ -18,6 +16,8 @@ const ELVISH: &str = "elvish";
 const FISH: &str = "fish";
 const PWRSH: &str = "powershell";
 const ZSH: &str = "zsh";
+
+const VERBOSE: usize = 2;
 
 static mut LAST_LEN: usize = 0;
 
@@ -170,23 +170,22 @@ fn main() {
     reset_print_verbose();
     println!();
 
-    let mut changes = Changes::default();
-
+    let checks = Checks::from(&index);
     if !nocheck {
         println!("============================================================");
         println!("# Checking");
         println!("============================================================");
 
-        //changes.check_inconsitent_release_artists(&index, inconsitent_artists_dialog);
-        //changes.check_inconsitent_albums(&index, inconsitent_albums_dialog);
-        //changes.check_inconsitent_total_tracks(&index, inconsitent_total_tracks_dialog);
-        //changes.check_inconsitent_total_discs(&index, inconsitent_total_discs_dialog);
+        //changes.check_inconsitent_release_artists(inconsitent_artists_dialog);
+        //changes.check_inconsitent_albums(inconsitent_albums_dialog);
+        //changes.check_inconsitent_total_tracks(inconsitent_total_tracks_dialog);
+        //changes.check_inconsitent_total_discs(inconsitent_total_discs_dialog);
         println!();
     }
 
-    changes.file_system(&index, &output_dir);
+    let changes = Changes::generate(checks, &output_dir);
 
-    if changes.dir_creations.is_empty() && changes.file_operations.is_empty() {
+    if changes.dir_creations.is_empty() && changes.song_operations.is_empty() {
         println!("{}", "nothing to do".green());
     } else {
         println!("============================================================");
@@ -204,13 +203,30 @@ fn main() {
                 }
                 println!();
             }
+            if !changes.song_operations.is_empty() {
+                println!("songs:");
+                for (i, f) in changes.song_operations.iter().enumerate() {
+                    println!(
+                        "{} {}",
+                        (i + 1).to_string().blue(),
+                        format_song_op(&music_dir, &output_dir, f, op_type_sim_pres, verbosity)
+                    );
+                }
+                println!();
+            }
             if !changes.file_operations.is_empty() {
-                println!("files:");
+                println!("others:");
                 for (i, f) in changes.file_operations.iter().enumerate() {
                     println!(
                         "{} {}",
                         (i + 1).to_string().blue(),
-                        format_file_op(&music_dir, &output_dir, f, op_type_sim_pres, verbosity)
+                        format_file_op(
+                            &music_dir,
+                            &output_dir,
+                            f.old_path,
+                            &f.new_path,
+                            op_type_sim_pres
+                        )
                     );
                 }
                 println!();
@@ -220,7 +236,7 @@ fn main() {
         println!(
             "{} dirs will be created.\n{} files will be {}.",
             changes.dir_creations.len(),
-            changes.file_operations.len(),
+            changes.song_operations.len() + changes.file_operations.len(),
             op_type_sim_past,
         );
 
@@ -240,7 +256,7 @@ fn main() {
             println!("# Writing");
             println!("============================================================");
             let mut i = 1;
-            changes.create_dirs(&mut |d, r| {
+            changes.dir_creations(&mut |d, r| {
                 match r {
                     Ok(_) => {
                         print_verbose(
@@ -269,13 +285,13 @@ fn main() {
             reset_print_verbose();
 
             let mut i = 1;
-            changes.file_operations(op_type, &mut |f, r| {
+            changes.song_operations(op_type, &mut |f, r| {
                 match r {
                     Ok(_) => {
                         let s = format!(
                             "{} {}",
                             (i + 1).to_string().blue(),
-                            format_file_op(&music_dir, &output_dir, f, op_type_sim_past, verbosity)
+                            format_song_op(&music_dir, &output_dir, f, op_type_sim_past, verbosity)
                         );
                         print_verbose(&s, verbosity >= 2);
                     }
@@ -285,7 +301,46 @@ fn main() {
                             "{} {} {}:\n{}",
                             (i + 1).to_string().blue(),
                             "error".red(),
-                            format_file_op(&music_dir, &output_dir, f, op_type_pres_prog, 2),
+                            format_song_op(&music_dir, &output_dir, f, op_type_pres_prog, VERBOSE),
+                            e.to_string().red(),
+                        );
+                    }
+                }
+
+                i += 1;
+            });
+            reset_print_verbose();
+
+            let mut i = 1;
+            changes.file_operations(op_type, &mut |f, r| {
+                match r {
+                    Ok(_) => {
+                        let s = format!(
+                            "{} {}",
+                            (i + 1).to_string().blue(),
+                            format_file_op(
+                                &music_dir,
+                                &output_dir,
+                                f.old_path,
+                                &f.new_path,
+                                op_type_sim_past
+                            )
+                        );
+                        print_verbose(&s, verbosity >= 2);
+                    }
+                    Err(e) => {
+                        reset_print_verbose();
+                        println!(
+                            "{} {} {}:\n{}",
+                            (i + 1).to_string().blue(),
+                            "error".red(),
+                            format_file_op(
+                                &music_dir,
+                                &output_dir,
+                                f.old_path,
+                                &f.new_path,
+                                op_type_pres_prog,
+                            ),
                             e.to_string().red(),
                         );
                     }
@@ -332,7 +387,7 @@ fn main() {
                 }
             }
 
-            println!("{} dirs will be created.", cleanup.dir_deletions.len());
+            println!("{} dirs will be deleted.", cleanup.dir_deletions.len());
 
             if !yes {
                 let ok = input_confirmation_loop("continue");
@@ -619,58 +674,109 @@ fn main() {
 //    }
 //}
 
-fn format_file_op(
+fn format_song_op(
     music_dir: &Path,
     output_dir: &Path,
-    file_op: &FileOperation,
+    file_op: &SongOperation,
     op_type_str: &str,
-    _verbosity: usize,
+    verbosity: usize,
 ) -> String {
-    let old_path = strip_dir(&file_op.old, music_dir).yellow();
-    let new = file_op.new.as_ref().map(|n| strip_dir(n, output_dir).green());
-
-    match (&new, &file_op.tag_update) {
-        (Some(new_path), Some(_tag_update)) => format!(
-            "{} {} to {}",
-            op_type_str,
-            new_path,
-            old_path,
-            //format_metadata(&tag_update.meta, verbosity)
+    match (&file_op.new_path, &file_op.tag_update) {
+        (Some(new_path), Some(tag_update)) => format!(
+            "{}\n{}",
+            format_file_op(music_dir, output_dir, &file_op.song.path, new_path, op_type_str),
+            format_tag_update(file_op.song, tag_update, verbosity),
         ),
-        (None, Some(_tag_update)) => "".to_string(), //format_metadata(&tag_update.meta, verbosity),
+        (None, Some(tag_update)) => format_tag_update(file_op.song, tag_update, verbosity),
         (Some(new_path), None) => {
-            if op_type_str.len() + old_path.len() + new_path.len() + 5 <= 180 {
-                format!("{} {} to {}", op_type_str, old_path, new_path)
-            } else {
-                format!("{} {}\n    to {}", op_type_str, old_path, new_path)
-            }
+            format_file_op(music_dir, output_dir, &file_op.song.path, new_path, op_type_str)
         }
-        (None, None) => format!("Nothing to do: {}", old_path),
+        (None, None) => String::new(),
     }
 }
 
-//fn format_metadata(m: &Metadata, verbosity: usize) -> String {
-//    format!(
-//        "\
-//artist: {}
-//album artist: {}
-//album: {}
-//title: {}
-//track number: {}
-//total tracks: {}
-//disc number: {}
-//total discs: {}
-//",
-//        m.artist.as_ref().map(|s| s.as_str()).unwrap_or("unchanged"),
-//        m.album_artist.as_ref().map(|s| s.as_str()).unwrap_or("unchanged"),
-//        m.release.as_ref().map(|s| s.as_str()).unwrap_or("unchanged"),
-//        m.title.as_ref().map(|s| s.as_str()).unwrap_or("unchanged"),
-//        m.track_number.map(|n| n.to_string()).unwrap_or("unchanged".into()),
-//        m.total_tracks.map(|n| n.to_string()).unwrap_or("unchanged".into()),
-//        m.disc_number.map(|n| n.to_string()).unwrap_or("unchanged".into()),
-//        m.total_discs.map(|n| n.to_string()).unwrap_or("unchanged".into()),
-//    )
-//}
+fn format_file_op(
+    music_dir: &Path,
+    output_dir: &Path,
+    old_path: &Path,
+    new_path: &Path,
+    op_type_str: &str,
+) -> String {
+    let old = strip_dir(old_path, music_dir).yellow();
+    let new = strip_dir(new_path, output_dir).green();
+
+    if op_type_str.len() + old.len() + new.len() + 5 <= 180 {
+        format!("{} {} to {}", op_type_str, old, new)
+    } else {
+        format!("{} {}\n    to {}", op_type_str, old, new)
+    }
+}
+
+fn format_tag_update(s: &Song, u: &TagUpdate, _verbosity: usize) -> String {
+    let mut string = String::new();
+
+    if let Some(s) = format_string_vec("release artists", &s.release_artists, &u.release_artists) {
+        string.push_str(&s);
+    }
+    if let Some(s) = format_string_vec("artists", &s.artists, &u.artists) {
+        string.push_str(&s);
+    }
+    if let Some(s) = format_string("release", &s.release, &u.release) {
+        string.push_str(&s);
+    }
+    if let Some(s) = format_string("title", &s.title, &u.title) {
+        string.push_str(&s);
+    }
+    if let Some(s) = format_u16("track number", s.track_number, u.track_number) {
+        string.push_str(&s);
+    }
+    if let Some(s) = format_u16("total tracks", s.total_tracks, u.total_tracks) {
+        string.push_str(&s);
+    }
+    if let Some(s) = format_u16("disc number", s.disc_number, u.track_number) {
+        string.push_str(&s);
+    }
+    if let Some(s) = format_u16("total discs", s.total_discs, u.total_discs) {
+        string.push_str(&s);
+    }
+
+    string
+}
+
+fn format_u16(name: &str, old: Option<u16>, new: Value<u16>) -> Option<String> {
+    match (old, new) {
+        (Some(old), Value::Update(new)) => Some(format!(
+            "change {}: {} to {}",
+            name,
+            old.to_string().yellow(),
+            new.to_string().green()
+        )),
+        (None, Value::Update(new)) => Some(format!("add {}: {}", name, new.to_string().green())),
+        (Some(old), Value::Remove) => Some(format!("remove {}: {}", name, old.to_string().red())),
+        _ => None,
+    }
+}
+
+fn format_string(name: &str, old: &String, new: &Value<String>) -> Option<String> {
+    match new {
+        Value::Update(new) => Some(format!("change {}: {} to {}", name, old.yellow(), new.green())),
+        Value::Remove => Some(format!("remove {}: {}", name, old.red())),
+        Value::Unchanged => None,
+    }
+}
+
+fn format_string_vec(name: &str, old: &Vec<String>, new: &Value<Vec<String>>) -> Option<String> {
+    match new {
+        Value::Update(new) => Some(format!(
+            "change {}: {} to {}",
+            name,
+            old.join(", ").yellow(),
+            new.join(", ").green()
+        )),
+        Value::Remove => Some(format!("remove {}: {}", name, old.join(", ").red())),
+        Value::Unchanged => None,
+    }
+}
 
 #[inline]
 fn print_verbose(str: &str, verbose: bool) {
