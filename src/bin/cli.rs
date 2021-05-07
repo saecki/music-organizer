@@ -153,6 +153,7 @@ fn main() {
         FileOpType::Copy => ("copy", "copying", "copied"),
         FileOpType::Move => ("move", "moving", "moved"),
     };
+    let (rename_sim_pres, rename_pres_prog, rename_sim_past) = ("rename", "renaming", "renamed");
 
     println!("============================================================");
     println!("# Indexing");
@@ -209,7 +210,14 @@ fn main() {
                     println!(
                         "{} {}",
                         (i + 1).to_string().blue(),
-                        format_song_op(&music_dir, &output_dir, f, op_type_sim_pres, verbosity)
+                        format_song_op(
+                            &music_dir,
+                            &output_dir,
+                            f,
+                            op_type_sim_pres,
+                            rename_sim_pres,
+                            verbosity
+                        )
                     );
                 }
                 println!();
@@ -225,7 +233,8 @@ fn main() {
                             &output_dir,
                             f.old_path,
                             &f.new_path,
-                            op_type_sim_pres
+                            op_type_sim_pres,
+                            rename_sim_pres,
                         )
                     );
                 }
@@ -291,7 +300,14 @@ fn main() {
                         let s = format!(
                             "{} {}",
                             (i + 1).to_string().blue(),
-                            format_song_op(&music_dir, &output_dir, f, op_type_sim_past, verbosity)
+                            format_song_op(
+                                &music_dir,
+                                &output_dir,
+                                f,
+                                op_type_sim_past,
+                                rename_sim_past,
+                                verbosity
+                            )
                         );
                         print_verbose(&s, verbosity >= 2);
                     }
@@ -301,7 +317,14 @@ fn main() {
                             "{} {} {}:\n{}",
                             (i + 1).to_string().blue(),
                             "error".red(),
-                            format_song_op(&music_dir, &output_dir, f, op_type_pres_prog, VERBOSE),
+                            format_song_op(
+                                &music_dir,
+                                &output_dir,
+                                f,
+                                op_type_pres_prog,
+                                rename_pres_prog,
+                                VERBOSE
+                            ),
                             e.to_string().red(),
                         );
                     }
@@ -323,7 +346,8 @@ fn main() {
                                 &output_dir,
                                 f.old_path,
                                 &f.new_path,
-                                op_type_sim_past
+                                op_type_sim_past,
+                                rename_sim_past,
                             )
                         );
                         print_verbose(&s, verbosity >= 2);
@@ -340,6 +364,7 @@ fn main() {
                                 f.old_path,
                                 &f.new_path,
                                 op_type_pres_prog,
+                                rename_pres_prog,
                             ),
                             e.to_string().red(),
                         );
@@ -679,18 +704,31 @@ fn format_song_op(
     output_dir: &Path,
     file_op: &SongOperation,
     op_type_str: &str,
+    rename_str: &str,
     verbosity: usize,
 ) -> String {
     match (&file_op.new_path, &file_op.tag_update) {
         (Some(new_path), Some(tag_update)) => format!(
             "{}\n{}",
-            format_file_op(music_dir, output_dir, &file_op.song.path, new_path, op_type_str),
+            format_file_op(
+                music_dir,
+                output_dir,
+                &file_op.song.path,
+                new_path,
+                op_type_str,
+                rename_str
+            ),
             format_tag_update(file_op.song, tag_update, verbosity),
         ),
         (None, Some(tag_update)) => format_tag_update(file_op.song, tag_update, verbosity),
-        (Some(new_path), None) => {
-            format_file_op(music_dir, output_dir, &file_op.song.path, new_path, op_type_str)
-        }
+        (Some(new_path), None) => format_file_op(
+            music_dir,
+            output_dir,
+            &file_op.song.path,
+            new_path,
+            op_type_str,
+            rename_str,
+        ),
         (None, None) => String::new(),
     }
 }
@@ -701,14 +739,29 @@ fn format_file_op(
     old_path: &Path,
     new_path: &Path,
     op_type_str: &str,
+    rename_str: &str,
 ) -> String {
     let old = strip_dir(old_path, music_dir).yellow();
-    let new = strip_dir(new_path, output_dir).green();
 
-    if op_type_str.len() + old.len() + new.len() + 5 <= 180 {
-        format!("{} {} to {}", op_type_str, old, new)
+    let mut just_rename = false;
+    let release_dir = old_path.parent().unwrap();
+    let new = match new_path.strip_prefix(release_dir).ok() {
+        Some(p) => {
+            if p.components().count() == 1 {
+                just_rename = true;
+                p.display().to_string().green()
+            } else {
+                strip_dir(new_path, output_dir).green()
+            }
+        }
+        None => strip_dir(new_path, output_dir).green(),
+    };
+
+    let operation = if just_rename { rename_str } else { op_type_str };
+    if operation.len() + old.len() + new.len() + 5 <= 180 {
+        format!("{} {} to {}", operation, old, new)
     } else {
-        format!("{} {}\n    to {}", op_type_str, old, new)
+        format!("{} {}\n    to {}", operation, old, new)
     }
 }
 
