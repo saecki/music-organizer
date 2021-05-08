@@ -79,6 +79,8 @@ impl<'a> Changes<'a> {
             let artists = valid_os_str(&song.artists_str());
             let title = valid_os_str(&song.title);
             let extension = song.path.extension().unwrap();
+            let disc = song.disc_number.unwrap_or(0);
+            let total_discs = song.total_discs.unwrap_or(0);
             let track = song.track_number.unwrap_or(0);
 
             let mut path = output_dir.join(&release_artists);
@@ -88,6 +90,10 @@ impl<'a> Changes<'a> {
             self.dir_creation(&path);
 
             let mut file_name = OsString::new();
+            if total_discs > 1 {
+                file_name.push(disc.to_string());
+                file_name.push(" ");
+            }
             file_name.push(format!("{:02} - ", track));
             file_name.push(&artists);
             file_name.push(" - ");
