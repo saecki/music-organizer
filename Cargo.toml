@@ -1,8 +1,16 @@
 [package]
-name = "music_organizer"
+name = "music-organizer"
 version = "0.2.0"
 authors = ["Saecki <tobiasschmitz2001@gmail.com>"]
 edition = "2018"
+
+[lib]
+name = "music_organizer"
+path = "src/core/lib.rs"
+
+[[bin]]
+name = "cli"
+path = "src/cli/main.rs"
 
 [dependencies]
 clap = "3.0.0-beta.2"

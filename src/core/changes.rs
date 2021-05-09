@@ -2,13 +2,8 @@ use std::ffi::OsString;
 use std::path::Path;
 use std::{error, io};
 
-use crate::Checks;
-use crate::Song;
-use crate::{
-    fs::{valid_os_str, valid_os_str_dots},
-    FileOperation,
-};
-use crate::{DirCreation, FileOpType, MusicIndex, SongOperation};
+use crate::fs::{valid_os_str, valid_os_str_dots};
+use crate::{Checks, DirCreation, FileOpType, FileOperation, MusicIndex, Song, SongOperation};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Changes<'a> {

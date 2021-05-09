@@ -6,7 +6,8 @@ use std::{error, path::Path};
 
 use regex::Regex;
 
-use crate::{update::TagUpdate, Song};
+use crate::update::TagUpdate;
+use crate::Song;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct DirCreation {
