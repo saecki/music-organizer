@@ -18,6 +18,6 @@ clap_generate = "3.0.0-beta.2"
 regex = "1.4.2"
 walkdir = "2.3.2"
 id3 = "0.6.4"
-mp4ameta = { path = "../rust-mp4ameta" }
+mp4ameta = "0.11.0"
 lazy_static = "1.4.0"
 colored = "2.0.0"
