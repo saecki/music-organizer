@@ -1,4 +1,4 @@
-use clap::{crate_authors, crate_version, App, Arg, ValueHint};
+use clap::{crate_authors, crate_version, App, AppSettings, Arg, ValueHint};
 use clap_generate::generate;
 use clap_generate::generators::{Bash, Elvish, Fish, PowerShell, Zsh};
 use music_organizer::FileOpType;
@@ -26,6 +26,8 @@ pub struct Args {
 
 pub fn parse_args() -> Args {
     let mut app = App::new("music organizer")
+        .setting(AppSettings::ColoredHelp)
+        .setting(AppSettings::ColorAuto)
         .version(crate_version!())
         .author(crate_authors!())
         .about("Moves/copies, renames and retags Music files using their metadata.")
