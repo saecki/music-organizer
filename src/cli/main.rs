@@ -32,9 +32,9 @@ fn main() {
     };
     let (rename_sim_pres, rename_pres_prog, rename_sim_past) = ("rename", "renaming", "renamed");
 
-    println!("============================================================");
-    println!("# Indexing");
-    println!("============================================================");
+    println!("╭────────────────────────────────────────────────────────────╮");
+    println!("│ Indexing                                                   │");
+    println!("╰────────────────────────────────────────────────────────────╯");
     let mut index = MusicIndex::from(music_dir.clone());
 
     let mut i = 1;
@@ -50,9 +50,9 @@ fn main() {
 
     let checks = Checks::from(&index);
     if !no_check {
-        println!("============================================================");
-        println!("# Checking");
-        println!("============================================================");
+        println!("╭────────────────────────────────────────────────────────────╮");
+        println!("│ Checking                                                   │");
+        println!("╰────────────────────────────────────────────────────────────╯");
 
         //changes.check_inconsitent_release_artists(inconsitent_artists_dialog);
         //changes.check_inconsitent_albums(inconsitent_albums_dialog);
@@ -66,9 +66,9 @@ fn main() {
     if changes.dir_creations.is_empty() && changes.song_operations.is_empty() {
         println!("{}", "nothing to do".green());
     } else {
-        println!("============================================================");
-        println!("# Changes");
-        println!("============================================================");
+        println!("╭────────────────────────────────────────────────────────────╮");
+        println!("│ Changes                                                    │");
+        println!("╰────────────────────────────────────────────────────────────╯");
         if verbosity >= 1 {
             if !changes.dir_creations.is_empty() {
                 println!("dirs:");
@@ -138,9 +138,9 @@ fn main() {
         if dry_run {
             println!("skip writing dryrun...");
         } else {
-            println!("============================================================");
-            println!("# Writing");
-            println!("============================================================");
+            println!("╭────────────────────────────────────────────────────────────╮");
+            println!("│ Writing                                                    │");
+            println!("╰────────────────────────────────────────────────────────────╯");
             let mut i = 1;
             changes.dir_creations(&mut |d, r| {
                 match r {
@@ -255,9 +255,9 @@ fn main() {
     }
 
     if !no_cleanup {
-        println!("============================================================");
-        println!("# Cleanup");
-        println!("============================================================");
+        println!("╭────────────────────────────────────────────────────────────╮");
+        println!("│ Cleanup                                                    │");
+        println!("╰────────────────────────────────────────────────────────────╯");
         let mut cleanup = Cleanup::from(music_dir.clone());
         let mut i = 1;
         cleanup.check(&mut |p| {
