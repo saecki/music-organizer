@@ -37,7 +37,7 @@ pub fn parse_args() -> Args {
                 .long("music-dir")
                 .about("The directory which will be searched for music files")
                 .takes_value(true)
-                .required_unless_present("generate-completion")
+                .default_value("~/Music")
                 .value_hint(ValueHint::DirPath),
         )
         .arg(
@@ -121,25 +121,19 @@ pub fn parse_args() -> Args {
     }
 
     let music_dir = {
-        let dir = PathBuf::from(matches.value_of("music-dir").unwrap());
-        match PathBuf::from(&dir).canonicalize() {
-            Ok(t) => t,
-            Err(e) => {
-                println!("Not a valid music dir path: {}\n{:?}", dir.display(), e);
-                exit(1)
-            }
+        let dir = shellexpand::tilde(matches.value_of("music-dir").unwrap());
+        let path = PathBuf::from(dir.as_ref());
+        if !path.exists() {
+            println!("Not a valid music dir path: {}", dir);
+            exit(1)
         }
+        path
     };
 
     let output_dir = match matches.value_of("output-dir") {
         Some(s) => {
-            let dir = PathBuf::from(s);
-            match dir.canonicalize() {
-                Ok(p) => p,
-                Err(_) => std::env::current_dir()
-                    .map(|wd| wd.join(dir.clone()))
-                    .expect("could not retrieve working directory"),
-            }
+            let dir = shellexpand::tilde(s);
+            PathBuf::from(dir.as_ref())
         }
         None => music_dir.clone(),
     };
