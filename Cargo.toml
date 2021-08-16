@@ -9,7 +9,7 @@ name = "music_organizer"
 path = "src/core/lib.rs"
 
 [[bin]]
-name = "cli"
+name = "music-organizer"
 path = "src/cli/main.rs"
 
 [dependencies]

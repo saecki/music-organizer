@@ -24,7 +24,7 @@ fn is_empty_dir(cleanup: &mut Cleanup, dir: &Path, f: &mut impl FnMut(&Path)) ->
         }
     }
 
-    return false;
+    false
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]

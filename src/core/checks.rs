@@ -21,9 +21,9 @@ impl<'a> Checks<'a> {
             let mut added = false;
 
             for a in self.artists.iter_mut() {
-                if &a.names == &s.release_artists {
+                if a.names == s.release_artists {
                     for r in a.releases.iter_mut() {
-                        if &r.name == &s.release {
+                        if r.name == s.release {
                             r.songs.push(s);
                             added = true;
                         }

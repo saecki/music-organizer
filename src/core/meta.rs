@@ -78,11 +78,11 @@ impl Metadata {
             artists: tag
                 .artist()
                 .map(|s| s.split('\u{0}').map(|s| s.to_string()).collect())
-                .unwrap_or(Vec::new()),
+                .unwrap_or_default(),
             release_artists: tag
                 .album_artist()
                 .map(|s| s.split('\u{0}').map(|s| s.to_string()).collect())
-                .unwrap_or(Vec::new()),
+                .unwrap_or_default(),
             release: tag.album().map(|s| s.to_string()),
             title: tag.title().map(|s| s.to_string()),
             has_artwork: tag.pictures().next().is_some(),

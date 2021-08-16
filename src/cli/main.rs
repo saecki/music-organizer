@@ -40,7 +40,7 @@ fn main() {
     let mut i = 1;
     index.read(&mut |p| {
         print_verbose(
-            &format!("{} {}", (i + 1).to_string().blue(), strip_dir(&p, &music_dir).green()),
+            &format!("{} {}", (i + 1).to_string().blue(), strip_dir(p, &music_dir).green()),
             verbosity >= 2,
         );
         i += 1;
@@ -274,19 +274,17 @@ fn main() {
         if cleanup.dir_deletions.is_empty() {
             println!("{}", "nothing to cleanup".green());
         } else {
-            if verbosity >= 1 {
-                if !cleanup.dir_deletions.is_empty() {
-                    println!("dirs:");
+            if verbosity >= 1 && !cleanup.dir_deletions.is_empty() {
+                println!("dirs:");
 
-                    for (i, d) in cleanup.dir_deletions.iter().enumerate() {
-                        println!(
-                            "{} delete {}",
-                            (i + 1).to_string().blue(),
-                            strip_dir(&d.path, &music_dir).red(),
-                        );
-                    }
-                    println!();
+                for (i, d) in cleanup.dir_deletions.iter().enumerate() {
+                    println!(
+                        "{} delete {}",
+                        (i + 1).to_string().blue(),
+                        strip_dir(&d.path, &music_dir).red(),
+                    );
                 }
+                println!();
             }
 
             println!("{} dirs will be deleted.", cleanup.dir_deletions.len());
@@ -695,7 +693,7 @@ fn format_string(name: &str, old: &str, new: &Value<String>) -> Option<String> {
     }
 }
 
-fn format_string_vec(name: &str, old: &Vec<String>, new: &Value<Vec<String>>) -> Option<String> {
+fn format_string_vec(name: &str, old: &[String], new: &Value<Vec<String>>) -> Option<String> {
     match new {
         Value::Update(new) => Some(format!(
             "change {}: {} to {}",
