@@ -41,8 +41,13 @@ impl From<PathBuf> for Cleanup {
 
 impl Cleanup {
     pub fn check(&mut self, f: &mut impl FnMut(&Path)) {
-        let p = self.music_dir.to_owned();
-        is_empty_dir(self, &p, f);
+        let dir = self.music_dir.to_owned();
+
+        if let Ok(r) = fs::read_dir(dir) {
+            for e in r.into_iter().filter_map(|e| e.ok()) {
+                is_empty_dir(self, &e.path(), f);
+            }
+        }
     }
 
     pub fn excecute(&self) {
