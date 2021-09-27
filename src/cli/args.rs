@@ -21,6 +21,7 @@ pub struct Args {
     pub assume_yes: bool,
     pub dry_run: bool,
     pub no_check: bool,
+    pub keep_embedded_artworks: bool,
     pub no_cleanup: bool,
 }
 
@@ -60,6 +61,13 @@ pub fn parse_args() -> Args {
                 .short('n')
                 .long("nocheck")
                 .about("Don't check for inconsistencies")
+                .takes_value(false),
+        )
+        .arg(
+            Arg::new("keep embedded artworks")
+                .short('e')
+                .long("keep-embedded-artworks")
+                .about("Keep embedded artworks")
                 .takes_value(false),
         )
         .arg(
@@ -148,6 +156,7 @@ pub fn parse_args() -> Args {
         },
         assume_yes: matches.is_present("assume-yes"),
         no_check: matches.is_present("nocheck"),
+        keep_embedded_artworks: matches.is_present("keep embedded artworks"),
         no_cleanup: matches.is_present("nocleanup"),
         dry_run: matches.is_present("dryrun"),
     }

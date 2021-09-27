@@ -18,7 +18,7 @@ impl<'a> Changes<'a> {
         let mut new = Changes {
             index: checks.index,
             dir_creations: Vec::new(),
-            song_operations: checks.updates,
+            song_operations: checks.song_operations,
             file_operations: Vec::new(),
         };
         new.generate_diff(output_dir);
@@ -38,14 +38,14 @@ impl<'a> Changes<'a> {
     }
 
     fn update_song_op(&mut self, song: &'a Song, f: impl FnOnce(&mut SongOperation)) {
-        match self.song_operations.iter_mut().find(|f| f.song == song) {
-            Some(fo) => f(fo),
+        match self.song_operations.iter_mut().find(|o| o.song == song) {
+            Some(o) => f(o),
             None => {
-                let mut fo = SongOperation { song, tag_update: None, new_path: None };
+                let mut o = SongOperation { song, tag_update: None, new_path: None };
 
-                f(&mut fo);
+                f(&mut o);
 
-                self.song_operations.push(fo);
+                self.song_operations.push(o);
             }
         }
     }
@@ -60,9 +60,6 @@ impl<'a> Changes<'a> {
     }
 
     fn generate_diff(&mut self, output_dir: &Path) {
-        self.dir_creations.clear();
-        self.song_operations.clear();
-
         if !output_dir.exists() {
             self.dir_creations.push(DirCreation { path: output_dir.to_owned() })
         }
@@ -175,5 +172,11 @@ impl<'a> Changes<'a> {
             let r = o.execute(op_type);
             f(o, r);
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.dir_creations.is_empty()
+            && self.song_operations.is_empty()
+            && self.file_operations.is_empty()
     }
 }

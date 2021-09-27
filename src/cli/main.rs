@@ -1,18 +1,27 @@
 use colored::Colorize;
-use music_organizer::{
-    Changes, Checks, Cleanup, FileOpType, MusicIndex, Song, SongOperation, TagUpdate, Value,
-};
+use music_organizer::{Changes, Checks, Cleanup, FileOpType, MusicIndex};
 use std::io::Write;
-use std::path::Path;
 use std::process::exit;
 
 use crate::args::Args;
+use crate::display::strip_dir;
 
 mod args;
+mod display;
 
 const VERBOSE: usize = 2;
 
-static mut LAST_LEN: usize = 0;
+macro_rules! print_verbose {
+    ($verbose:expr, $pat:expr, $($args:expr),*) => {{
+        if $verbose {
+            println!($pat $(,$args)*);
+        } else {
+            print!("\x1b[2K\r");
+            print!($pat $(,$args)*);
+            let _ = std::io::stdout().flush().is_ok();
+        }
+    }}
+}
 
 fn main() {
     let Args {
@@ -23,6 +32,7 @@ fn main() {
         assume_yes,
         dry_run,
         no_check,
+        keep_embedded_artworks,
         no_cleanup,
     } = args::parse_args();
 
@@ -39,20 +49,25 @@ fn main() {
 
     let mut i = 1;
     index.read(&mut |p| {
-        print_verbose(
-            &format!("{} {}", (i + 1).to_string().blue(), strip_dir(p, &music_dir).green()),
+        print_verbose!(
             verbosity >= 2,
+            "{} {}",
+            (i + 1).to_string().blue(),
+            strip_dir(p, &music_dir).green()
         );
         i += 1;
     });
-    reset_print_verbose();
     println!();
 
-    let checks = Checks::from(&index);
+    let mut checks = Checks::from(&index);
     if !no_check {
         println!("╭────────────────────────────────────────────────────────────╮");
         println!("│ Checking                                                   │");
         println!("╰────────────────────────────────────────────────────────────╯");
+
+        if !keep_embedded_artworks {
+            checks.remove_embedded_artworks();
+        }
 
         //changes.check_inconsitent_release_artists(inconsitent_artists_dialog);
         //changes.check_inconsitent_albums(inconsitent_albums_dialog);
@@ -63,7 +78,7 @@ fn main() {
 
     let changes = Changes::generate(checks, &output_dir);
 
-    if changes.dir_creations.is_empty() && changes.song_operations.is_empty() {
+    if changes.is_empty() {
         println!("{}", "nothing to do".green());
     } else {
         println!("╭────────────────────────────────────────────────────────────╮");
@@ -83,17 +98,17 @@ fn main() {
             }
             if !changes.song_operations.is_empty() {
                 println!("songs:");
-                for (i, f) in changes.song_operations.iter().enumerate() {
+                for (i, o) in changes.song_operations.iter().enumerate() {
                     println!(
                         "{} {}",
                         (i + 1).to_string().blue(),
-                        format_song_op(
+                        display::SongOp(
                             &music_dir,
                             &output_dir,
-                            f,
+                            o,
                             op_type_sim_pres,
                             rename_sim_pres,
-                            verbosity
+                            verbosity,
                         )
                     );
                 }
@@ -105,7 +120,7 @@ fn main() {
                     println!(
                         "{} {}",
                         (i + 1).to_string().blue(),
-                        format_file_op(
+                        display::FileOp(
                             &music_dir,
                             &output_dir,
                             f.old_path,
@@ -145,17 +160,14 @@ fn main() {
             changes.dir_creations(&mut |d, r| {
                 match r {
                     Ok(_) => {
-                        print_verbose(
-                            &format!(
-                                "{} created dir {}",
-                                (i + 1).to_string().blue(),
-                                d.path.display()
-                            ),
+                        print_verbose!(
                             verbosity >= 2,
+                            "{} created dir {}",
+                            (i + 1).to_string().blue(),
+                            d.path.display()
                         );
                     }
                     Err(e) => {
-                        reset_print_verbose();
                         println!(
                             "{} {} creating dir {}:\n{}",
                             (i + 1).to_string().blue(),
@@ -168,36 +180,34 @@ fn main() {
 
                 i += 1;
             });
-            reset_print_verbose();
 
             let mut i = 1;
-            changes.song_operations(op_type, &mut |f, r| {
+            changes.song_operations(op_type, &mut |o, r| {
                 match r {
                     Ok(_) => {
-                        let s = format!(
+                        print_verbose!(
+                            verbosity >= 2,
                             "{} {}",
                             (i + 1).to_string().blue(),
-                            format_song_op(
+                            display::SongOp(
                                 &music_dir,
                                 &output_dir,
-                                f,
+                                o,
                                 op_type_sim_past,
                                 rename_sim_past,
-                                verbosity
+                                verbosity,
                             )
                         );
-                        print_verbose(&s, verbosity >= 2);
                     }
                     Err(e) => {
-                        reset_print_verbose();
                         println!(
                             "{} {} {}:\n{}",
                             (i + 1).to_string().blue(),
                             "error".red(),
-                            format_song_op(
+                            display::SongOp(
                                 &music_dir,
                                 &output_dir,
-                                f,
+                                o,
                                 op_type_pres_prog,
                                 rename_pres_prog,
                                 VERBOSE
@@ -209,16 +219,16 @@ fn main() {
 
                 i += 1;
             });
-            reset_print_verbose();
 
             let mut i = 1;
             changes.file_operations(op_type, &mut |f, r| {
                 match r {
                     Ok(_) => {
-                        let s = format!(
+                        print_verbose!(
+                            verbosity >= 2,
                             "{} {}",
                             (i + 1).to_string().blue(),
-                            format_file_op(
+                            display::FileOp(
                                 &music_dir,
                                 &output_dir,
                                 f.old_path,
@@ -227,15 +237,13 @@ fn main() {
                                 rename_sim_past,
                             )
                         );
-                        print_verbose(&s, verbosity >= 2);
                     }
                     Err(e) => {
-                        reset_print_verbose();
-                        println!(
+                        print!(
                             "{} {} {}:\n{}",
                             (i + 1).to_string().blue(),
                             "error".red(),
-                            format_file_op(
+                            display::FileOp(
                                 &music_dir,
                                 &output_dir,
                                 f.old_path,
@@ -250,7 +258,6 @@ fn main() {
 
                 i += 1;
             });
-            reset_print_verbose();
         }
     }
 
@@ -261,14 +268,15 @@ fn main() {
         let mut cleanup = Cleanup::from(music_dir.clone());
         let mut i = 1;
         cleanup.check(&mut |p| {
-            print_verbose(
-                &format!("{} {}", i.to_string().blue(), strip_dir(p, &music_dir).green()),
+            print_verbose!(
                 verbosity == 2,
+                "{} {}",
+                i.to_string().blue(),
+                strip_dir(p, &music_dir).green()
             );
 
             i += 1;
         });
-        reset_print_verbose();
         println!();
 
         if cleanup.dir_deletions.is_empty() {
@@ -301,7 +309,17 @@ fn main() {
             if dry_run {
                 println!("skip cleaning up dryrun...");
             } else {
-                cleanup.excecute();
+                let mut i = 1;
+                cleanup.excecute(&mut |p| {
+                    print_verbose!(
+                        verbosity >= 1,
+                        "{} {} {}",
+                        i.to_string().blue(),
+                        "delete".red(),
+                        strip_dir(p, &music_dir).red()
+                    );
+                    i += 1;
+                });
             }
         }
     }
@@ -574,165 +592,6 @@ fn main() {
 //    }
 //}
 
-fn format_song_op(
-    music_dir: &Path,
-    output_dir: &Path,
-    file_op: &SongOperation,
-    op_type_str: &str,
-    rename_str: &str,
-    verbosity: usize,
-) -> String {
-    match (&file_op.new_path, &file_op.tag_update) {
-        (Some(new_path), Some(tag_update)) => format!(
-            "{}\n{}",
-            format_file_op(
-                music_dir,
-                output_dir,
-                &file_op.song.path,
-                new_path,
-                op_type_str,
-                rename_str
-            ),
-            format_tag_update(file_op.song, tag_update, verbosity),
-        ),
-        (None, Some(tag_update)) => format_tag_update(file_op.song, tag_update, verbosity),
-        (Some(new_path), None) => format_file_op(
-            music_dir,
-            output_dir,
-            &file_op.song.path,
-            new_path,
-            op_type_str,
-            rename_str,
-        ),
-        (None, None) => String::new(),
-    }
-}
-
-fn format_file_op(
-    music_dir: &Path,
-    output_dir: &Path,
-    old_path: &Path,
-    new_path: &Path,
-    op_type_str: &str,
-    rename_str: &str,
-) -> String {
-    let old = strip_dir(old_path, music_dir).yellow();
-
-    let mut just_rename = false;
-    let release_dir = old_path.parent().unwrap();
-    let new = match new_path.strip_prefix(release_dir).ok() {
-        Some(p) => {
-            if p.components().count() == 1 {
-                just_rename = true;
-                p.display().to_string().green()
-            } else {
-                strip_dir(new_path, output_dir).green()
-            }
-        }
-        None => strip_dir(new_path, output_dir).green(),
-    };
-
-    let operation = if just_rename { rename_str } else { op_type_str };
-    if operation.len() + old.len() + new.len() + 5 <= 180 {
-        format!("{} {} to {}", operation, old, new)
-    } else {
-        format!("{} {}\n    to {}", operation, old, new)
-    }
-}
-
-fn format_tag_update(s: &Song, u: &TagUpdate, _verbosity: usize) -> String {
-    let mut string = String::new();
-
-    if let Some(s) = format_string_vec("release artists", &s.release_artists, &u.release_artists) {
-        string.push_str(&s);
-    }
-    if let Some(s) = format_string_vec("artists", &s.artists, &u.artists) {
-        string.push_str(&s);
-    }
-    if let Some(s) = format_string("release", &s.release, &u.release) {
-        string.push_str(&s);
-    }
-    if let Some(s) = format_string("title", &s.title, &u.title) {
-        string.push_str(&s);
-    }
-    if let Some(s) = format_u16("track number", s.track_number, u.track_number) {
-        string.push_str(&s);
-    }
-    if let Some(s) = format_u16("total tracks", s.total_tracks, u.total_tracks) {
-        string.push_str(&s);
-    }
-    if let Some(s) = format_u16("disc number", s.disc_number, u.track_number) {
-        string.push_str(&s);
-    }
-    if let Some(s) = format_u16("total discs", s.total_discs, u.total_discs) {
-        string.push_str(&s);
-    }
-
-    string
-}
-
-fn format_u16(name: &str, old: Option<u16>, new: Value<u16>) -> Option<String> {
-    match (old, new) {
-        (Some(old), Value::Update(new)) => Some(format!(
-            "change {}: {} to {}",
-            name,
-            old.to_string().yellow(),
-            new.to_string().green()
-        )),
-        (None, Value::Update(new)) => Some(format!("add {}: {}", name, new.to_string().green())),
-        (Some(old), Value::Remove) => Some(format!("remove {}: {}", name, old.to_string().red())),
-        _ => None,
-    }
-}
-
-fn format_string(name: &str, old: &str, new: &Value<String>) -> Option<String> {
-    match new {
-        Value::Update(new) => Some(format!("change {}: {} to {}", name, old.yellow(), new.green())),
-        Value::Remove => Some(format!("remove {}: {}", name, old.red())),
-        Value::Unchanged => None,
-    }
-}
-
-fn format_string_vec(name: &str, old: &[String], new: &Value<Vec<String>>) -> Option<String> {
-    match new {
-        Value::Update(new) => Some(format!(
-            "change {}: {} to {}",
-            name,
-            old.join(", ").yellow(),
-            new.join(", ").green()
-        )),
-        Value::Remove => Some(format!("remove {}: {}", name, old.join(", ").red())),
-        Value::Unchanged => None,
-    }
-}
-
-#[inline]
-fn print_verbose(str: &str, verbose: bool) {
-    if verbose {
-        println!("{}", str);
-    } else {
-        let len = str.chars().count();
-        let diff = unsafe { LAST_LEN as i32 - len as i32 };
-
-        print!("\r{}", str);
-        for _ in 0..diff {
-            print!(" ");
-        }
-        let _ = std::io::stdout().flush().is_ok();
-
-        unsafe {
-            LAST_LEN = len;
-        }
-    }
-}
-
-fn reset_print_verbose() {
-    println!();
-    unsafe {
-        LAST_LEN = 0;
-    }
-}
-
 //fn input_loop(str: &str, predicate: fn(&str) -> bool) -> String {
 //    loop {
 //        println!("{}", str);
@@ -808,8 +667,4 @@ fn input_confirmation_loop(str: &str) -> bool {
             }
         }
     }
-}
-
-fn strip_dir(path: &Path, dir: &Path) -> String {
-    path.strip_prefix(dir).unwrap().display().to_string()
 }

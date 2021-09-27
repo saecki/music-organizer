@@ -1,5 +1,10 @@
 use std::{error, path::Path};
 
+use id3::frame::Picture;
+use id3::frame::PictureType as Id3PictureType;
+use metaflac::block::PictureType as FlacPictureType;
+use mp4ameta::Img;
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct TagUpdate {
     pub track_number: Value<u16>,
@@ -10,6 +15,7 @@ pub struct TagUpdate {
     pub release_artists: Value<Vec<String>>,
     pub release: Value<String>,
     pub title: Value<String>,
+    pub artwork: Value<Vec<u8>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -33,6 +39,18 @@ impl<T> Value<T> {
             Self::Update(v) => Some(v),
             _ => None,
         }
+    }
+
+    pub fn is_update(&self) -> bool {
+        matches!(self, Self::Update(_))
+    }
+
+    pub fn is_remove(&self) -> bool {
+        matches!(self, Self::Remove)
+    }
+
+    pub fn is_unchanged(&self) -> bool {
+        matches!(self, Self::Unchanged)
     }
 }
 
@@ -91,6 +109,19 @@ impl TagUpdate {
                     Value::Remove => tag.remove_total_discs(),
                     Value::Unchanged => (),
                 }
+                match &self.artwork {
+                    Value::Update(d) => {
+                        tag.remove_all_pictures();
+                        tag.add_picture(Picture {
+                            mime_type: "image/png".to_string(),
+                            picture_type: Id3PictureType::CoverFront,
+                            description: "".to_string(),
+                            data: d.clone(),
+                        })
+                    }
+                    Value::Remove => tag.remove_all_pictures(),
+                    Value::Unchanged => (),
+                }
 
                 tag
             }
@@ -143,6 +174,11 @@ impl TagUpdate {
                 match &self.total_discs {
                     Value::Update(d) => tag.set_total_discs(*d),
                     Value::Remove => tag.remove_total_discs(),
+                    Value::Unchanged => (),
+                }
+                match &self.artwork {
+                    Value::Update(d) => tag.set_artwork(Img::png(d.clone())),
+                    Value::Remove => tag.remove_artworks(),
                     Value::Unchanged => (),
                 }
 
@@ -199,6 +235,13 @@ impl TagUpdate {
                 match &self.total_discs {
                     Value::Update(d) => vorbis.set("TOTALDISCS", vec![d.to_string()]),
                     Value::Remove => vorbis.remove("TOTALDISCS"),
+                    Value::Unchanged => (),
+                }
+                match &self.artwork {
+                    Value::Update(d) => {
+                        tag.add_picture("image/png", FlacPictureType::CoverFront, d.clone())
+                    }
+                    Value::Remove => tag.remove_picture_type(FlacPictureType::CoverFront),
                     Value::Unchanged => (),
                 }
 

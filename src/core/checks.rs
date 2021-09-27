@@ -1,20 +1,20 @@
-use crate::{MusicIndex, Release, ReleaseArtists, SongOperation};
+use crate::{MusicIndex, Release, ReleaseArtists, Song, SongOperation, TagUpdate, Value};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Checks<'a> {
     pub index: &'a MusicIndex,
-    pub updates: Vec<SongOperation<'a>>,
+    pub song_operations: Vec<SongOperation<'a>>,
     pub artists: Vec<ReleaseArtists<'a>>,
 }
 
 impl<'a> From<&'a MusicIndex> for Checks<'a> {
     fn from(index: &'a MusicIndex) -> Self {
-        Self { index, updates: Vec::new(), artists: Vec::new() }
+        Self { index, song_operations: Vec::new(), artists: Vec::new() }
     }
 }
 
 impl<'a> Checks<'a> {
-    pub fn update(&mut self) {
+    pub fn update_index(&mut self) {
         self.artists.clear();
 
         for s in self.index.songs.iter() {
@@ -41,6 +41,40 @@ impl<'a> Checks<'a> {
                     names: &s.release_artists,
                     releases: vec![Release { name: &s.release, songs: vec![s] }],
                 });
+            }
+        }
+    }
+
+    fn update_song_op(&mut self, song: &'a Song, f: impl FnOnce(&mut SongOperation)) {
+        match self.song_operations.iter_mut().find(|f| f.song == song) {
+            Some(o) => f(o),
+            None => {
+                let mut o = SongOperation { song, tag_update: None, new_path: None };
+
+                f(&mut o);
+
+                self.song_operations.push(o);
+            }
+        }
+    }
+
+    fn update_tag(&mut self, song: &'a Song, f: impl FnOnce(&mut TagUpdate)) {
+        self.update_song_op(song, |op| match &mut op.tag_update {
+            Some(t) => f(t),
+            None => {
+                let mut t = TagUpdate::default();
+
+                f(&mut t);
+
+                op.tag_update = Some(t);
+            }
+        });
+    }
+
+    pub fn remove_embedded_artworks(&mut self) {
+        for s in self.index.songs.iter() {
+            if s.has_artwork {
+                self.update_tag(s, |t| t.artwork = Value::Remove);
             }
         }
     }
