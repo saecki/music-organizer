@@ -62,6 +62,11 @@ impl Metadata {
                     return meta;
                 }
             }
+            "flac" => {
+                if let Some(meta) = Self::read_flac(path) {
+                    return meta;
+                }
+            }
             _ => (),
         }
 
@@ -70,7 +75,8 @@ impl Metadata {
 
     fn read_mp3(path: &Path) -> Option<Self> {
         let tag = id3::Tag::read_from_path(&path).ok()?;
-        let m = Self {
+
+        Some(Self {
             track_number: zero_none(tag.track().map(|u| u as u16)),
             total_tracks: zero_none(tag.total_tracks().map(|u| u as u16)),
             disc_number: zero_none(tag.disc().map(|u| u as u16)),
@@ -85,15 +91,13 @@ impl Metadata {
                 .unwrap_or_default(),
             release: tag.album().map(|s| s.to_string()),
             title: tag.title().map(|s| s.to_string()),
-            has_artwork: tag.pictures().next().is_some(),
-        };
-
-        Some(m)
+            has_artwork: tag.pictures().count() > 0,
+        })
     }
 
     fn read_mp4(path: &Path) -> Option<Self> {
         let mut tag = mp4ameta::Tag::read_from_path(&path).ok()?;
-        let m = Self {
+        Some(Self {
             track_number: tag.track_number(),
             total_tracks: tag.total_tracks(),
             disc_number: tag.disc_number(),
@@ -103,9 +107,24 @@ impl Metadata {
             release: tag.take_album(),
             title: tag.take_title(),
             has_artwork: tag.artwork().is_some(),
-        };
+        })
+    }
 
-        Some(m)
+    fn read_flac(path: &Path) -> Option<Self> {
+        let tag = metaflac::Tag::read_from_path(&path).ok()?;
+        let vorbis = tag.vorbis_comments()?;
+
+        Some(Self {
+            track_number: zero_none(vorbis.track().map(|u| u as u16)),
+            total_tracks: zero_none(vorbis.total_tracks().map(|u| u as u16)),
+            disc_number: zero_none(vorbis.get("DISCNUMBER").and_then(|d| d[0].parse().ok())),
+            total_discs: zero_none(vorbis.get("TOTALDISCS").and_then(|d| d[0].parse().ok())),
+            artists: vorbis.artist().map_or_else(Vec::new, |v| v.to_owned()),
+            release_artists: vorbis.album_artist().map_or_else(Vec::new, |v| v.to_owned()),
+            release: vorbis.album().map(|v| v[0].clone()),
+            title: vorbis.title().map(|v| v[0].clone()),
+            has_artwork: tag.pictures().count() > 0,
+        })
     }
 
     pub fn release_artists(&self) -> Option<&[String]> {

@@ -39,110 +39,175 @@ impl<T> Value<T> {
 impl TagUpdate {
     pub fn execute(&self, path: &Path) -> Result<(), Box<dyn error::Error>> {
         match path.extension().unwrap().to_str().unwrap() {
-            "mp3" => {
-                let tag = match id3::Tag::read_from_path(path) {
-                    Ok(mut tag) => {
-                        match &self.release_artists {
-                            Value::Update(a) => tag.set_album_artist(a.join("\u{0}")),
-                            Value::Remove => tag.remove_album_artist(),
-                            Value::Unchanged => (),
-                        }
-                        match &self.release_artists {
-                            Value::Update(a) => tag.set_artist(a.join("\u{0}")),
-                            Value::Remove => tag.remove_artist(),
-                            Value::Unchanged => (),
-                        }
-                        match &self.release {
-                            Value::Update(a) => tag.set_album(a),
-                            Value::Remove => tag.remove_album(),
-                            Value::Unchanged => (),
-                        }
-                        match &self.title {
-                            Value::Update(t) => tag.set_title(t),
-                            Value::Remove => tag.remove_title(),
-                            Value::Unchanged => (),
-                        }
-                        match &self.track_number {
-                            Value::Update(t) => tag.set_track(*t as u32),
-                            Value::Remove => tag.remove_track(),
-                            Value::Unchanged => (),
-                        }
-                        match &self.total_tracks {
-                            Value::Update(t) => tag.set_total_tracks(*t as u32),
-                            Value::Remove => tag.remove_total_tracks(),
-                            Value::Unchanged => (),
-                        }
-                        match &self.disc_number {
-                            Value::Update(d) => tag.set_disc(*d as u32),
-                            Value::Remove => tag.remove_disc(),
-                            Value::Unchanged => (),
-                        }
-                        match &self.total_discs {
-                            Value::Update(d) => tag.set_total_discs(*d as u32),
-                            Value::Remove => tag.remove_total_discs(),
-                            Value::Unchanged => (),
-                        }
-
-                        tag
-                    }
-                    Err(_) => id3::Tag::default(),
-                };
-
-                tag.write_to_path(path, id3::Version::Id3v24)?;
-            }
-            "m4a" | "m4b" | "m4p" | "m4v" => {
-                let tag = match mp4ameta::Tag::read_from_path(path) {
-                    Ok(mut tag) => {
-                        match &self.release_artists {
-                            Value::Update(a) => tag.set_album_artists(a.clone()),
-                            Value::Remove => tag.remove_album_artists(),
-                            Value::Unchanged => (),
-                        }
-                        match &self.artists {
-                            Value::Update(a) => tag.set_artists(a.clone()),
-                            Value::Remove => tag.remove_artists(),
-                            Value::Unchanged => (),
-                        }
-                        match &self.release {
-                            Value::Update(a) => tag.set_album(a),
-                            Value::Remove => tag.remove_album(),
-                            Value::Unchanged => (),
-                        }
-                        match &self.title {
-                            Value::Update(t) => tag.set_title(t),
-                            Value::Remove => tag.remove_title(),
-                            Value::Unchanged => (),
-                        }
-                        match &self.track_number {
-                            Value::Update(t) => tag.set_track_number(*t),
-                            Value::Remove => tag.remove_track_number(),
-                            Value::Unchanged => (),
-                        }
-                        match &self.total_tracks {
-                            Value::Update(t) => tag.set_total_tracks(*t),
-                            Value::Remove => tag.remove_total_tracks(),
-                            Value::Unchanged => (),
-                        }
-                        match &self.disc_number {
-                            Value::Update(d) => tag.set_disc_number(*d),
-                            Value::Remove => tag.remove_disc_number(),
-                            Value::Unchanged => (),
-                        }
-                        match &self.total_discs {
-                            Value::Update(d) => tag.set_total_discs(*d),
-                            Value::Remove => tag.remove_total_discs(),
-                            Value::Unchanged => (),
-                        }
-
-                        tag
-                    }
-                    Err(_) => mp4ameta::Tag::default(),
-                };
-
-                tag.write_to_path(path)?;
-            }
+            "mp3" => self.write_mp3(path)?,
+            "m4a" => self.write_mp4(path)?,
+            "flac" => self.write_flac(path)?,
             _ => (),
         }
+
+        Ok(())
+    }
+
+    fn write_mp3(&self, path: &Path) -> Result<(), Box<dyn error::Error>> {
+        let tag = match id3::Tag::read_from_path(path) {
+            Ok(mut tag) => {
+                match &self.release_artists {
+                    Value::Update(a) => tag.set_album_artist(a.join("\u{0}")),
+                    Value::Remove => tag.remove_album_artist(),
+                    Value::Unchanged => (),
+                }
+                match &self.release_artists {
+                    Value::Update(a) => tag.set_artist(a.join("\u{0}")),
+                    Value::Remove => tag.remove_artist(),
+                    Value::Unchanged => (),
+                }
+                match &self.release {
+                    Value::Update(a) => tag.set_album(a),
+                    Value::Remove => tag.remove_album(),
+                    Value::Unchanged => (),
+                }
+                match &self.title {
+                    Value::Update(t) => tag.set_title(t),
+                    Value::Remove => tag.remove_title(),
+                    Value::Unchanged => (),
+                }
+                match &self.track_number {
+                    Value::Update(t) => tag.set_track(*t as u32),
+                    Value::Remove => tag.remove_track(),
+                    Value::Unchanged => (),
+                }
+                match &self.total_tracks {
+                    Value::Update(t) => tag.set_total_tracks(*t as u32),
+                    Value::Remove => tag.remove_total_tracks(),
+                    Value::Unchanged => (),
+                }
+                match &self.disc_number {
+                    Value::Update(d) => tag.set_disc(*d as u32),
+                    Value::Remove => tag.remove_disc(),
+                    Value::Unchanged => (),
+                }
+                match &self.total_discs {
+                    Value::Update(d) => tag.set_total_discs(*d as u32),
+                    Value::Remove => tag.remove_total_discs(),
+                    Value::Unchanged => (),
+                }
+
+                tag
+            }
+            Err(_) => id3::Tag::default(),
+        };
+
+        tag.write_to_path(path, id3::Version::Id3v24)?;
+
+        Ok(())
+    }
+
+    fn write_mp4(&self, path: &Path) -> Result<(), Box<dyn error::Error>> {
+        let tag = match mp4ameta::Tag::read_from_path(path) {
+            Ok(mut tag) => {
+                match &self.release_artists {
+                    Value::Update(a) => tag.set_album_artists(a.clone()),
+                    Value::Remove => tag.remove_album_artists(),
+                    Value::Unchanged => (),
+                }
+                match &self.artists {
+                    Value::Update(a) => tag.set_artists(a.clone()),
+                    Value::Remove => tag.remove_artists(),
+                    Value::Unchanged => (),
+                }
+                match &self.release {
+                    Value::Update(a) => tag.set_album(a),
+                    Value::Remove => tag.remove_album(),
+                    Value::Unchanged => (),
+                }
+                match &self.title {
+                    Value::Update(t) => tag.set_title(t),
+                    Value::Remove => tag.remove_title(),
+                    Value::Unchanged => (),
+                }
+                match &self.track_number {
+                    Value::Update(t) => tag.set_track_number(*t),
+                    Value::Remove => tag.remove_track_number(),
+                    Value::Unchanged => (),
+                }
+                match &self.total_tracks {
+                    Value::Update(t) => tag.set_total_tracks(*t),
+                    Value::Remove => tag.remove_total_tracks(),
+                    Value::Unchanged => (),
+                }
+                match &self.disc_number {
+                    Value::Update(d) => tag.set_disc_number(*d),
+                    Value::Remove => tag.remove_disc_number(),
+                    Value::Unchanged => (),
+                }
+                match &self.total_discs {
+                    Value::Update(d) => tag.set_total_discs(*d),
+                    Value::Remove => tag.remove_total_discs(),
+                    Value::Unchanged => (),
+                }
+
+                tag
+            }
+            Err(_) => mp4ameta::Tag::default(),
+        };
+
+        tag.write_to_path(path)?;
+
+        Ok(())
+    }
+
+    fn write_flac(&self, path: &Path) -> Result<(), Box<dyn error::Error>> {
+        let mut tag = match metaflac::Tag::read_from_path(path) {
+            Ok(mut tag) => {
+                let vorbis = tag.vorbis_comments_mut();
+
+                match &self.release_artists {
+                    Value::Update(a) => vorbis.set_album_artist(a.clone()),
+                    Value::Remove => vorbis.remove_album_artist(),
+                    Value::Unchanged => (),
+                }
+                match &self.artists {
+                    Value::Update(a) => vorbis.set_artist(a.clone()),
+                    Value::Remove => vorbis.remove_artist(),
+                    Value::Unchanged => (),
+                }
+                match &self.release {
+                    Value::Update(a) => vorbis.set_album(vec![a]),
+                    Value::Remove => vorbis.remove_album(),
+                    Value::Unchanged => (),
+                }
+                match &self.title {
+                    Value::Update(t) => vorbis.set_title(vec![t]),
+                    Value::Remove => vorbis.remove_title(),
+                    Value::Unchanged => (),
+                }
+                match &self.track_number {
+                    Value::Update(t) => vorbis.set_track(*t as u32),
+                    Value::Remove => vorbis.remove_track(),
+                    Value::Unchanged => (),
+                }
+                match &self.total_tracks {
+                    Value::Update(t) => vorbis.set_total_tracks(*t as u32),
+                    Value::Remove => vorbis.remove_total_tracks(),
+                    Value::Unchanged => (),
+                }
+                match &self.disc_number {
+                    Value::Update(d) => vorbis.set("DISCNUMBER", vec![d.to_string()]),
+                    Value::Remove => vorbis.remove("DISCNUMBER"),
+                    Value::Unchanged => (),
+                }
+                match &self.total_discs {
+                    Value::Update(d) => vorbis.set("TOTALDISCS", vec![d.to_string()]),
+                    Value::Remove => vorbis.remove("TOTALDISCS"),
+                    Value::Unchanged => (),
+                }
+
+                tag
+            }
+            Err(_) => metaflac::Tag::default(),
+        };
+
+        tag.write_to_path(path)?;
 
         Ok(())
     }
