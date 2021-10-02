@@ -79,7 +79,7 @@ fn main() {
     let changes = Changes::generate(checks, &output_dir);
 
     if changes.is_empty() {
-        println!("{}", "nothing to do".green());
+        println!("{}\n", "nothing to do".green());
     } else {
         println!("╭────────────────────────────────────────────────────────────╮");
         println!("│ Changes                                                    │");
@@ -259,6 +259,7 @@ fn main() {
                 i += 1;
             });
         }
+        println!();
     }
 
     if !no_cleanup {
