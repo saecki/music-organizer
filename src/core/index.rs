@@ -79,7 +79,6 @@ impl MusicIndex {
                     path: p.to_owned(),
                 });
             } else if is_image_extension(extension) {
-                // TODO move images to new dir
                 self.images.push(p);
             }
         }
