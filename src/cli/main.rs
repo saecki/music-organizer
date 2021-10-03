@@ -141,7 +141,7 @@ fn main() {
             op_type_sim_past,
         );
 
-        if !assume_yes {
+        if !assume_yes && !dry_run {
             let ok = input_confirmation_loop("continue");
 
             if !ok {
@@ -298,7 +298,7 @@ fn main() {
 
             println!("{} dirs will be deleted.", cleanup.dir_deletions.len());
 
-            if !assume_yes {
+            if !assume_yes && !dry_run {
                 let ok = input_confirmation_loop("continue");
 
                 if !ok {

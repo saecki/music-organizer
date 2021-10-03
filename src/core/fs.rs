@@ -124,11 +124,10 @@ pub fn valid_os_str(str: &str) -> String {
     RE.replace_all(str, "").trim().to_string()
 }
 
-const MUSIC_FILE_EXTENSIONS: [&str; 3] = ["m4a", "mp3", "flac"];
-
+const SONG_EXTENSIONS: [&str; 3] = ["m4a", "mp3", "flac"];
 #[inline]
-pub fn is_music_extension(s: &OsStr) -> bool {
-    for e in &MUSIC_FILE_EXTENSIONS {
+pub fn is_song_extension(s: &OsStr) -> bool {
+    for e in &SONG_EXTENSIONS {
         if s.eq(*e) {
             return true;
         }
@@ -137,10 +136,10 @@ pub fn is_music_extension(s: &OsStr) -> bool {
     false
 }
 
-const IMAGE_FILE_EXTENSIONS: [&str; 3] = ["png", "jpg", "jpeg"];
+const IMAGE_EXTENSIONS: [&str; 3] = ["png", "jpg", "jpeg"];
 #[inline]
 pub fn is_image_extension(s: &OsStr) -> bool {
-    for e in &IMAGE_FILE_EXTENSIONS {
+    for e in &IMAGE_EXTENSIONS {
         if s.eq(*e) {
             return true;
         }
