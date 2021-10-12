@@ -98,7 +98,7 @@ impl From<bool> for FileOpType {
 }
 
 lazy_static::lazy_static! {
-    static ref RE: Regex = Regex::new(r#"[<>:"/\|?*]"#).unwrap();
+    static ref RE: Regex = Regex::new(r#"[<>:"/\\|?*]"#).unwrap();
 }
 
 #[inline]
