@@ -73,13 +73,12 @@ fn main() {
         //changes.check_inconsitent_albums(inconsitent_albums_dialog);
         //changes.check_inconsitent_total_tracks(inconsitent_total_tracks_dialog);
         //changes.check_inconsitent_total_discs(inconsitent_total_discs_dialog);
-        println!();
     }
 
     let changes = Changes::generate(checks, &output_dir);
 
     if changes.is_empty() {
-        println!("{}\n", "nothing to do".green());
+        println!("{}", "nothing to do".green());
     } else {
         println!("╭────────────────────────────────────────────────────────────╮");
         println!("│ Changes                                                    │");
