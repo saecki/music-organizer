@@ -35,7 +35,7 @@ pub fn parse_args() -> Args {
             Arg::new("music-dir")
                 .short('m')
                 .long("music-dir")
-                .about("The directory which will be searched for music files")
+                .help("The directory which will be searched for music files")
                 .takes_value(true)
                 .default_value("~/Music")
                 .value_hint(ValueHint::DirPath),
@@ -44,7 +44,7 @@ pub fn parse_args() -> Args {
             Arg::new("output-dir")
                 .short('o')
                 .long("output-dir")
-                .about("The directory which the content will be written to")
+                .help("The directory which the content will be written to")
                 .takes_value(true)
                 .value_hint(ValueHint::DirPath),
         )
@@ -52,41 +52,41 @@ pub fn parse_args() -> Args {
             Arg::new("copy")
                 .short('c')
                 .long("copy")
-                .about("Copy the files instead of moving")
+                .help("Copy the files instead of moving")
                 .requires("output-dir"),
         )
         .arg(
             Arg::new("nocheck")
                 .short('n')
                 .long("nocheck")
-                .about("Don't check for inconsistencies")
+                .help("Don't check for inconsistencies")
                 .takes_value(false),
         )
         .arg(
             Arg::new("keep embedded artworks")
                 .short('e')
                 .long("keep-embedded-artworks")
-                .about("Keep embedded artworks")
+                .help("Keep embedded artworks")
                 .takes_value(false),
         )
         .arg(
             Arg::new("nocleanup")
                 .long("nocleanup")
-                .about("Don't remove empty directories")
+                .help("Don't remove empty directories")
                 .takes_value(false),
         )
         .arg(
             Arg::new("assume-yes")
                 .short('y')
                 .long("assume-yes")
-                .about("Assumes yes as a answer for questions")
+                .help("Assumes yes as a answer for questions")
                 .takes_value(false),
         )
         .arg(
             Arg::new("dryrun")
                 .short('d')
                 .long("dryrun")
-                .about("Only check files don't change anything")
+                .help("Only check files don't change anything")
                 .takes_value(false)
                 .conflicts_with("assume-yes"),
         )
@@ -95,7 +95,7 @@ pub fn parse_args() -> Args {
                 .short('v')
                 .long("verbosity")
                 .value_name("level")
-                .about("Verbosity level of the output. 0 means least 2 means most verbose ouput.")
+                .help("Verbosity level of the output. 0 means least 2 means most verbose ouput.")
                 .takes_value(true)
                 .possible_values(&["0", "1", "2"])
                 .default_value("1"),
@@ -105,7 +105,7 @@ pub fn parse_args() -> Args {
                 .short('g')
                 .long("generate-completion")
                 .value_name("shell")
-                .about("Generates a completion script for the specified shell")
+                .help("Generates a completion script for the specified shell")
                 .conflicts_with("music-dir")
                 .takes_value(true)
                 .possible_values(&[BASH, ZSH, FISH, ELVISH, PWRSH]),
