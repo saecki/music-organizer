@@ -29,11 +29,8 @@ enum Item {
 
 impl MusicIndexBuilder {
     fn start(&mut self) {
-        loop {
-            match self.dir_receiver.recv_timeout(Duration::from_millis(100)) {
-                Ok(p) => self.read(p),
-                Err(_) => break,
-            }
+        while let Ok(p) = self.dir_receiver.recv_timeout(Duration::from_millis(100)) {
+            self.read(p);
         }
     }
 
@@ -71,7 +68,7 @@ impl MusicIndexBuilder {
         let release_artists = match m.release_artists() {
             Some(a) => a,
             None => {
-                let _ = self.item_sender.send(Item::Unknown(p.clone()));
+                let _ = self.item_sender.send(Item::Unknown(p));
                 return;
             }
         };
@@ -79,7 +76,7 @@ impl MusicIndexBuilder {
         let song_artists = match m.song_artists() {
             Some(a) => a,
             None => {
-                let _ = self.item_sender.send(Item::Unknown(p.clone()));
+                let _ = self.item_sender.send(Item::Unknown(p));
                 return;
             }
         };
@@ -87,7 +84,7 @@ impl MusicIndexBuilder {
         let release = match &m.release {
             Some(rl) => rl,
             None => {
-                let _ = self.item_sender.send(Item::Unknown(p.clone()));
+                let _ = self.item_sender.send(Item::Unknown(p));
                 return;
             }
         };
@@ -95,7 +92,7 @@ impl MusicIndexBuilder {
         let title = match &m.title {
             Some(t) => t,
             None => {
-                let _ = self.item_sender.send(Item::Unknown(p.clone()));
+                let _ = self.item_sender.send(Item::Unknown(p));
                 return;
             }
         };
@@ -110,7 +107,7 @@ impl MusicIndexBuilder {
             release: release.to_owned(),
             title: title.to_owned(),
             has_artwork: m.has_artwork,
-            path: p.to_owned(),
+            path: p,
         }));
     }
 }
@@ -139,23 +136,20 @@ impl MusicIndex {
 
         drop(item_sender);
 
-        loop {
-            match item_receiver.recv() {
-                Ok(i) => match i {
-                    Item::Song(s) => {
-                        f(&s.path);
-                        self.songs.push(s);
-                    }
-                    Item::Unknown(p) => {
-                        f(&p);
-                        self.unknown.push(p);
-                    }
-                    Item::Image(p) => {
-                        f(&p);
-                        self.images.push(p);
-                    }
-                },
-                Err(_) => break,
+        while let Ok(i) = item_receiver.recv() {
+            match i {
+                Item::Song(s) => {
+                    f(&s.path);
+                    self.songs.push(s);
+                }
+                Item::Unknown(p) => {
+                    f(&p);
+                    self.unknown.push(p);
+                }
+                Item::Image(p) => {
+                    f(&p);
+                    self.images.push(p);
+                }
             }
         }
 
