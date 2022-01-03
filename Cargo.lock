@@ -54,9 +54,9 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "clap"
-version = "3.0.0-rc.8"
+version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "484f17839417b695a6f4a75c20e49820ba0a1d00aa41ebd8ba0e5dfe0fbc3b74"
+checksum = "d17bf219fcd37199b9a29e00ba65dfb8cd5b2688b7297ec14ff829c40ac50ca9"
 dependencies = [
  "atty",
  "bitflags",
@@ -70,10 +70,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "clap_generate"
-version = "3.0.0-rc.8"
+name = "clap_complete"
+version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46edf9e899ef90f3cefafb75dfae4c52746911cb905408bdf147a4bfe6fd72aa"
+checksum = "60d123fbea4c5d9799cffd44051e2125c880efd23b3b7c529baf3ea5508c8736"
 dependencies = [
  "clap",
 ]
@@ -273,7 +273,7 @@ name = "music-organizer"
 version = "0.2.0"
 dependencies = [
  "clap",
- "clap_generate",
+ "clap_complete",
  "colored",
  "crossbeam-channel",
  "id3",

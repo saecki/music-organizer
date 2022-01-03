@@ -1,6 +1,6 @@
 use clap::{crate_authors, crate_version, App, Arg, ColorChoice, ValueHint};
-use clap_generate::generate;
-use clap_generate::generators::{Bash, Elvish, Fish, PowerShell, Zsh};
+use clap_complete::generate;
+use clap_complete::shells::{Bash, Elvish, Fish, PowerShell, Zsh};
 use music_organizer::FileOpType;
 use std::path::PathBuf;
 use std::process::exit;
