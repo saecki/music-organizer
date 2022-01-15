@@ -1,5 +1,6 @@
 use std::{error, path::Path};
 
+use id3::TagLike;
 use id3::frame::Picture;
 use id3::frame::PictureType as Id3PictureType;
 use metaflac::block::PictureType as FlacPictureType;
@@ -112,12 +113,12 @@ impl TagUpdate {
                 match &self.artwork {
                     Value::Update(d) => {
                         tag.remove_all_pictures();
-                        tag.add_picture(Picture {
+                        tag.add_frame(Picture {
                             mime_type: "image/png".to_string(),
                             picture_type: Id3PictureType::CoverFront,
                             description: "".to_string(),
                             data: d.clone(),
-                        })
+                        });
                     }
                     Value::Remove => tag.remove_all_pictures(),
                     Value::Unchanged => (),

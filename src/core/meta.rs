@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use id3::TagLike;
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ReleaseArtists<'a> {
     pub names: &'a [String],
