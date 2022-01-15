@@ -2,7 +2,7 @@
 name = "music-organizer"
 version = "0.2.0"
 authors = ["Saecki <tobiasschmitz2001@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [lib]
 name = "music_organizer"
