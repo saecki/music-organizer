@@ -1,4 +1,4 @@
-use clap::{crate_authors, crate_version, App, Arg, ColorChoice, ValueHint};
+use clap::{crate_authors, crate_version, Command, Arg, ColorChoice, ValueHint};
 use clap_complete::generate;
 use clap_complete::shells::{Bash, Elvish, Fish, PowerShell, Zsh};
 use music_organizer::FileOpType;
@@ -26,7 +26,7 @@ pub struct Args {
 }
 
 pub fn parse_args() -> Args {
-    let mut app = App::new("music organizer")
+    let mut app = Command::new("music organizer")
         .color(ColorChoice::Auto)
         .version(crate_version!())
         .author(crate_authors!())
