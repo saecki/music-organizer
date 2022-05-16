@@ -13,10 +13,10 @@ name = "music-organizer"
 path = "src/cli/main.rs"
 
 [dependencies]
-clap = { version = "3.1.6", features = ["wrap_help", "cargo"] }
-clap_complete = "3.1.1"
+clap = { version = "3.1.18", features = ["wrap_help", "cargo"] }
+clap_complete = "3.1.4"
 regex = "1.5.5"
-id3 = "1.0.2"
+id3 = "1.0.3"
 mp4ameta = "0.11.0"
 metaflac = "0.2.5"
 lazy_static = "1.4.0"
