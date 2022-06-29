@@ -52,8 +52,8 @@ impl Cleanup {
 
     pub fn excecute(&self, f: &mut impl FnMut(&Path)) {
         for d in &self.dir_deletions {
-            f(&d.path);
             fs::remove_dir(&d.path).ok();
+            f(&d.path);
         }
     }
 }
