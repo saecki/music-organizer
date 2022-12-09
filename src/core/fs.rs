@@ -9,7 +9,7 @@ use regex::Regex;
 use crate::update::TagUpdate;
 use crate::Song;
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct DirCreation {
     pub path: PathBuf,
 }
@@ -20,7 +20,7 @@ impl DirCreation {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct DirDeletion {
     pub path: PathBuf,
 }
@@ -31,7 +31,7 @@ impl DirDeletion {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SongOperation<'a> {
     pub song: &'a Song,
     pub tag_update: Option<TagUpdate>,
@@ -62,7 +62,7 @@ impl SongOperation<'_> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FileOperation<'a> {
     pub old_path: &'a Path,
     pub new_path: PathBuf,
@@ -72,17 +72,17 @@ impl FileOperation<'_> {
     pub fn execute(&self, op_type: FileOpType) -> Result<(), Box<dyn error::Error>> {
         match op_type {
             FileOpType::Copy => {
-                fs::copy(&self.old_path, &self.new_path)?;
+                fs::copy(self.old_path, &self.new_path)?;
             }
             FileOpType::Move => {
-                fs::rename(&self.old_path, &self.new_path)?;
+                fs::rename(self.old_path, &self.new_path)?;
             }
         };
         Ok(())
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FileOpType {
     Move,
     Copy,

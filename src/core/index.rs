@@ -7,7 +7,7 @@ use crossbeam_channel::{Receiver, Sender};
 use crate::fs::{is_image_extension, is_song_extension};
 use crate::{Metadata, Song};
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct MusicIndex {
     pub music_dir: PathBuf,
     pub songs: Vec<Song>,

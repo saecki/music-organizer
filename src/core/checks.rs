@@ -1,6 +1,6 @@
 use crate::{MusicIndex, Release, ReleaseArtists, Song, SongOperation, TagUpdate, Value};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Checks<'a> {
     pub index: &'a MusicIndex,
     pub song_operations: Vec<SongOperation<'a>>,

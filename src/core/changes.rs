@@ -5,7 +5,7 @@ use std::{error, io};
 use crate::fs::{valid_os_str, valid_os_str_dots};
 use crate::{Checks, DirCreation, FileOpType, FileOperation, MusicIndex, Song, SongOperation};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Changes<'a> {
     pub index: &'a MusicIndex,
     pub dir_creations: Vec<DirCreation>,

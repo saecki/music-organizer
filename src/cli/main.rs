@@ -9,7 +9,7 @@ use crate::display::strip_dir;
 mod args;
 mod display;
 
-const VERBOSE: usize = 2;
+const VERBOSE: u8 = 2;
 
 macro_rules! print_verbose {
     ($verbose:expr, $pat:expr, $($args:expr),*) => {{

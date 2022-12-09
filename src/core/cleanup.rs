@@ -27,7 +27,7 @@ fn is_empty_dir(cleanup: &mut Cleanup, dir: &Path, f: &mut impl FnMut(&Path)) ->
     false
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Cleanup {
     pub dir_deletions: Vec<DirDeletion>,
     pub music_dir: PathBuf,

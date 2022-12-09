@@ -1,12 +1,12 @@
 use std::{error, path::Path};
 
-use id3::TagLike;
 use id3::frame::Picture;
 use id3::frame::PictureType as Id3PictureType;
+use id3::TagLike;
 use metaflac::block::PictureType as FlacPictureType;
 use mp4ameta::Img;
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TagUpdate {
     pub track_number: Value<u16>,
     pub total_tracks: Value<u16>,
@@ -19,14 +19,12 @@ pub struct TagUpdate {
     pub artwork: Value<Vec<u8>>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Value<T> {
     Update(T),
     Remove,
     Unchanged,
 }
-
-impl<T: Copy> Copy for Value<T> {}
 
 impl<T> Default for Value<T> {
     fn default() -> Self {

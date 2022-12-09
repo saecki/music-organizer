@@ -2,19 +2,19 @@ use std::path::{Path, PathBuf};
 
 use id3::TagLike;
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ReleaseArtists<'a> {
     pub names: &'a [String],
     pub releases: Vec<Release<'a>>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Release<'a> {
     pub name: &'a str,
     pub songs: Vec<&'a Song>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Song {
     pub path: PathBuf,
     pub track_number: Option<u16>,
@@ -38,7 +38,7 @@ impl Song {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Metadata {
     pub track_number: Option<u16>,
     pub total_tracks: Option<u16>,
@@ -76,7 +76,7 @@ impl Metadata {
     }
 
     fn read_mp3(path: &Path) -> Option<Self> {
-        let tag = id3::Tag::read_from_path(&path).ok()?;
+        let tag = id3::Tag::read_from_path(path).ok()?;
 
         Some(Self {
             track_number: zero_none(tag.track().map(|u| u as u16)),
@@ -98,7 +98,7 @@ impl Metadata {
     }
 
     fn read_mp4(path: &Path) -> Option<Self> {
-        let mut tag = mp4ameta::Tag::read_from_path(&path).ok()?;
+        let mut tag = mp4ameta::Tag::read_from_path(path).ok()?;
         Some(Self {
             track_number: tag.track_number(),
             total_tracks: tag.total_tracks(),
@@ -113,7 +113,7 @@ impl Metadata {
     }
 
     fn read_flac(path: &Path) -> Option<Self> {
-        let tag = metaflac::Tag::read_from_path(&path).ok()?;
+        let tag = metaflac::Tag::read_from_path(path).ok()?;
         let vorbis = tag.vorbis_comments()?;
 
         Some(Self {

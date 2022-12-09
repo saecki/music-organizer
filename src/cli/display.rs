@@ -10,7 +10,7 @@ pub struct SongOp<'a>(
     pub &'a SongOperation<'a>,
     pub &'a str,
     pub &'a str,
-    pub usize,
+    pub u8,
 );
 
 impl Display for SongOp<'_> {
@@ -41,7 +41,7 @@ fn format_song_op(
     song_op: &SongOperation,
     op_type_str: &str,
     rename_str: &str,
-    verbosity: usize,
+    verbosity: u8,
 ) -> fmt::Result {
     match (&song_op.new_path, &song_op.tag_update) {
         (Some(new_path), Some(tag_update)) => {
@@ -113,7 +113,7 @@ fn format_tag_update(
     f: &mut impl fmt::Write,
     s: &Song,
     u: &TagUpdate,
-    _verbosity: usize,
+    _verbosity: u8,
 ) -> fmt::Result {
     format_string_vec(f, "release artists", &s.release_artists, &u.release_artists)?;
     format_string_vec(f, "artists", &s.artists, &u.artists)?;
