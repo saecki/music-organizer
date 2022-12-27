@@ -75,7 +75,7 @@ impl<'a> Changes<'a> {
             let total_discs = song.total_discs.unwrap_or(0);
             let track = song.track_number.unwrap_or(0);
 
-            let mut path = output_dir.join(&release_artists);
+            let mut path = output_dir.join(release_artists);
             self.dir_creation(&path);
 
             path.push(&release);
