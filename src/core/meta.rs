@@ -69,6 +69,11 @@ impl Metadata {
                     return meta;
                 }
             }
+            "opus" => {
+                if let Some(meta) = Self::read_opus(path) {
+                    return meta;
+                }
+            }
             _ => (),
         }
 
@@ -127,6 +132,27 @@ impl Metadata {
             title: vorbis.title().map(|v| v[0].clone()),
             has_artwork: tag.pictures().count() > 0,
         })
+    }
+
+    fn read_opus(path: &Path) -> Option<Self> {
+        let headers = opus_headers::parse_from_path(path).ok()?;
+
+        let mut meta = Metadata::default();
+        for (key, value) in headers.comments.user_comments {
+            match key {
+                _ if key.eq_ignore_ascii_case("TITLE") => meta.title = Some(value),
+                _ if key.eq_ignore_ascii_case("ALBUM") => meta.release = Some(value),
+                _ if key.eq_ignore_ascii_case("ARTIST") => meta.artists.push(value),
+                _ if key.eq_ignore_ascii_case("ALBUMARTIST") => meta.release_artists.push(value),
+                _ if key.eq_ignore_ascii_case("TRACKNUMBER") => meta.track_number = value.parse::<u16>().ok(),
+                _ if key.eq_ignore_ascii_case("TOTALTRACKS") => meta.total_tracks = value.parse::<u16>().ok(),
+                _ if key.eq_ignore_ascii_case("DISCNUMBER") => meta.disc_number = value.parse::<u16>().ok(),
+                _ if key.eq_ignore_ascii_case("TOTALDISCS") => meta.total_discs = value.parse::<u16>().ok(),
+                _ => (),
+            }
+        }
+
+        Some(meta)
     }
 
     pub fn release_artists(&self) -> Option<&[String]> {

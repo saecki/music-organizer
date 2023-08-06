@@ -16,10 +16,13 @@ path = "src/cli/main.rs"
 clap = { version = "4.3", features = ["wrap_help", "cargo"] }
 clap_complete = "4.3"
 regex = "1.9.3"
-id3 = "1.7.0"
-mp4ameta = "0.11.0"
-metaflac = "0.2.5"
 lazy_static = "1.4.0"
 colored = "2.0.4"
 shellexpand = "3.1.0"
 crossbeam-channel = "0.5.8"
+
+# Music file formats
+id3 = "1.7.0"
+mp4ameta = "0.11.0"
+metaflac = "0.2.5"
+opus_headers = "0.1.2"

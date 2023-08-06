@@ -124,7 +124,7 @@ pub fn valid_os_str(str: &str) -> String {
     RE.replace_all(str, "").trim().to_string()
 }
 
-const SONG_EXTENSIONS: [&str; 3] = ["m4a", "mp3", "flac"];
+const SONG_EXTENSIONS: [&str; 4] = ["m4a", "mp3", "flac", "ogg"];
 #[inline]
 pub fn is_song_extension(s: &OsStr) -> bool {
     for e in &SONG_EXTENSIONS {
