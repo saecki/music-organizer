@@ -101,9 +101,9 @@ fn format_file_op(
 
     let operation = if just_rename { rename_str } else { op_type_str };
     if operation.len() + old.len() + new.len() + 5 <= 180 {
-        write!(f, "{} {} to {}", operation, old, new)?;
+        write!(f, "{operation} {old} to {new}")?;
     } else {
-        write!(f, "{} {}\n    to {}", operation, old, new)?;
+        write!(f, "{operation} {old}\n    to {new}")?;
     }
 
     Ok(())
@@ -135,15 +135,11 @@ fn format_u16(
     new: Value<u16>,
 ) -> Result<bool, fmt::Error> {
     match (old, new) {
-        (Some(old), Value::Update(new)) => write!(
-            f,
-            "change {}: {} to {}",
-            name,
-            old.to_string().yellow(),
-            new.to_string().green()
-        )?,
-        (None, Value::Update(new)) => write!(f, "add {}: {}", name, new.to_string().green())?,
-        (Some(old), Value::Remove) => write!(f, "remove {}: {}", name, old.to_string().red())?,
+        (Some(old), Value::Update(new)) => {
+            write!(f, "change {name}: {} to {}", old.to_string().yellow(), new.to_string().green())?
+        }
+        (None, Value::Update(new)) => write!(f, "add {name}: {}", new.to_string().green())?,
+        (Some(old), Value::Remove) => write!(f, "remove {name}: {}", old.to_string().red())?,
         _ => return Ok(false),
     }
 
@@ -157,8 +153,8 @@ fn format_string(
     new: &Value<String>,
 ) -> Result<bool, fmt::Error> {
     match new {
-        Value::Update(new) => write!(f, "change {}: {} to {}", name, old.yellow(), new.green())?,
-        Value::Remove => write!(f, "remove {}: {}", name, old.red())?,
+        Value::Update(new) => write!(f, "change {name}: {} to {}", old.yellow(), new.green())?,
+        Value::Remove => write!(f, "remove {name}: {}", old.red())?,
         Value::Unchanged => return Ok(false),
     }
 
@@ -173,9 +169,9 @@ fn format_string_vec(
 ) -> Result<bool, fmt::Error> {
     match new {
         Value::Update(new) => {
-            write!(f, "change {}: {} to {}", name, old.join(", ").yellow(), new.join(", ").green())?
+            write!(f, "change {name}: {} to {}", old.join(", ").yellow(), new.join(", ").green())?
         }
-        Value::Remove => write!(f, "remove {}: {}", name, old.join(", ").red())?,
+        Value::Remove => write!(f, "remove {name}: {}", old.join(", ").red())?,
         Value::Unchanged => return Ok(false),
     }
 
@@ -189,9 +185,9 @@ fn format_value<T>(
     new: &Value<T>,
 ) -> Result<bool, fmt::Error> {
     match (old, new) {
-        (true, Value::Update(_)) => write!(f, "change {}", name)?,
-        (false, Value::Update(_)) => write!(f, "add {}", name)?,
-        (true, Value::Remove) => write!(f, "remove {}", name)?,
+        (true, Value::Update(_)) => write!(f, "change {name}")?,
+        (false, Value::Update(_)) => write!(f, "add {name}")?,
+        (true, Value::Remove) => write!(f, "remove {name}")?,
         _ => return Ok(false),
     }
 

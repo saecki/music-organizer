@@ -317,9 +317,8 @@ fn main() {
                 cleanup.excecute(&mut |p| {
                     print_verbose!(
                         verbosity >= 1,
-                        "{} {} {}",
+                        "{} deleted {}",
                         i.to_string().blue(),
-                        "deleted",
                         strip_dir(p, &music_dir).red()
                     );
                     i += 1;
@@ -651,13 +650,13 @@ fn main() {
 
 fn input_confirmation_loop(str: &str) -> bool {
     loop {
-        print!("{} [y/N]?", str);
+        print!("{str} [y/N]?");
         let mut input = String::with_capacity(2);
 
         let _ = std::io::stdout().flush().is_ok();
 
         if let Err(e) = std::io::stdin().read_line(&mut input) {
-            println!("error:\n {}", e);
+            println!("error:\n {e}");
         } else {
             input.retain(|c| c != '\r' && c != '\n');
             input.make_ascii_lowercase();
