@@ -52,7 +52,7 @@ fn main() {
         print_verbose!(
             verbosity >= 2,
             "{} {}",
-            (i + 1).to_string().blue(),
+            i.to_string().blue(),
             strip_dir(p, &music_dir).green()
         );
         i += 1;
@@ -150,27 +150,27 @@ fn main() {
             }
         }
 
+        let mut i = 1;
         if dry_run {
             println!("skip writing dryrun...");
         } else {
             println!("╭────────────────────────────────────────────────────────────╮");
             println!("│ Writing                                                    │");
             println!("╰────────────────────────────────────────────────────────────╯");
-            let mut i = 1;
             changes.dir_creations(&mut |d, r| {
                 match r {
                     Ok(_) => {
                         print_verbose!(
                             verbosity >= 2,
                             "{} created dir {}",
-                            (i + 1).to_string().blue(),
+                            i.to_string().blue(),
                             d.path.display()
                         );
                     }
                     Err(e) => {
                         println!(
                             "{} {} creating dir {}:\n{}",
-                            (i + 1).to_string().blue(),
+                            i.to_string().blue(),
                             "error".red(),
                             d.path.display(),
                             e.to_string().red()
@@ -188,7 +188,7 @@ fn main() {
                         print_verbose!(
                             verbosity >= 2,
                             "{} {}",
-                            (i + 1).to_string().blue(),
+                            i.to_string().blue(),
                             display::SongOp(
                                 &music_dir,
                                 &output_dir,
@@ -202,7 +202,7 @@ fn main() {
                     Err(e) => {
                         println!(
                             "{} {} {}:\n{}",
-                            (i + 1).to_string().blue(),
+                            i.to_string().blue(),
                             "error".red(),
                             display::SongOp(
                                 &music_dir,
@@ -220,14 +220,13 @@ fn main() {
                 i += 1;
             });
 
-            let mut i = 1;
             changes.file_operations(op_type, &mut |f, r| {
                 match r {
                     Ok(_) => {
                         print_verbose!(
                             verbosity >= 2,
                             "{} {}",
-                            (i + 1).to_string().blue(),
+                            i.to_string().blue(),
                             display::FileOp(
                                 &music_dir,
                                 &output_dir,
@@ -241,7 +240,7 @@ fn main() {
                     Err(e) => {
                         print!(
                             "{} {} {}:\n{}",
-                            (i + 1).to_string().blue(),
+                            i.to_string().blue(),
                             "error".red(),
                             display::FileOp(
                                 &music_dir,
