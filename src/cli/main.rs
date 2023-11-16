@@ -320,7 +320,7 @@ fn main() {
                         verbosity >= 1,
                         "{} {} {}",
                         i.to_string().blue(),
-                        "deleted".red(),
+                        "deleted",
                         strip_dir(p, &music_dir).red()
                     );
                     i += 1;
