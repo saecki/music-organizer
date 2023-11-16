@@ -133,11 +133,12 @@ fn main() {
             }
         }
 
+        let num_dir_creations = changes.dir_creations.len();
+        let num_file_moves = changes.song_operations.len() + changes.file_operations.len();
         println!(
-            "{} dirs will be created.\n{} files will be {}.",
-            changes.dir_creations.len(),
-            changes.song_operations.len() + changes.file_operations.len(),
-            op_type_sim_past,
+            "{num_dir_creations} {} will be created.\n{num_file_moves} {} will be {op_type_sim_past}.",
+            if num_dir_creations == 1 { "dir" } else { "dirs" },
+            if num_file_moves == 1 { "file" } else { "files" },
         );
 
         if !assume_yes && !dry_run {
@@ -295,7 +296,11 @@ fn main() {
                 println!();
             }
 
-            println!("{} dirs will be deleted.", cleanup.dir_deletions.len());
+            let num_dir_deletions = cleanup.dir_deletions.len();
+            println!(
+                "{num_dir_deletions} {} will be deleted.",
+                if num_dir_deletions == 1 { "dir" } else { "dirs" }
+            );
 
             if !assume_yes && !dry_run {
                 let ok = input_confirmation_loop("continue");
