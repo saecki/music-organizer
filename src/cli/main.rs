@@ -10,15 +10,36 @@ mod args;
 mod display;
 
 const VERBOSE: u8 = 2;
+const MAX_TITLE_WITH: usize = 9;
+const TITLE_INDEXING: &str = "INDEXING";
+const TITLE_CHECKING: &str = "CHECKING";
+const TITLE_CHANGES: &str = "CHANGES";
+const TITLE_WRITING: &str = "WRITING";
+const TITLE_CLEANUP: &str = "CLEANUP";
+const TITLE_DELETIONS: &str = "DELETIONS";
+const TITLE_CLEANING: &str = "CLEANING";
+
+fn print_title_verbose(verbose: bool, title: &str) {
+    if verbose {
+        print_title(title)
+    }
+}
+
+fn print_title(title: &str) {
+    let padding = MAX_TITLE_WITH - title.len() + 1;
+    println!("{} ", format!(" {title}{:padding$}", "").purple().on_black());
+}
 
 macro_rules! print_verbose {
-    ($verbose:expr, $pat:expr, $($args:expr),*) => {{
+    ($verbose:expr, $title:expr, $pat:expr, $($args:expr),*) => {{
         if $verbose {
             println!($pat $(,$args)*);
         } else {
             print!("\x1b[2K\r");
+            let padding = MAX_TITLE_WITH - $title.len() + 1;
+            print!("{} ", format!(" {}{:padding$}", $title, "").purple().on_black());
             print!($pat $(,$args)*);
-            let _ = std::io::stdout().flush().is_ok();
+            std::io::stdout().flush().ok();
         }
     }}
 }
@@ -42,30 +63,41 @@ fn main() {
     };
     let (rename_sim_pres, rename_pres_prog, rename_sim_past) = ("rename", "renaming", "renamed");
 
-    println!("╭────────────────────────────────────────────────────────────╮");
-    println!("│ Indexing                                                   │");
-    println!("╰────────────────────────────────────────────────────────────╯");
     let mut index = MusicIndex::from(music_dir.clone());
+    {
+        let verbose = verbosity >= 2;
+        print_title_verbose(verbose, TITLE_INDEXING);
 
-    let mut i = 1;
-    index.read(&mut |p| {
-        print_verbose!(
-            verbosity >= 2,
-            "{} {}",
-            i.to_string().blue(),
-            strip_dir(p, &music_dir).green()
-        );
-        i += 1;
-    });
-    println!();
+        let mut i = 1;
+        index.read(&mut |p| {
+            print_verbose!(
+                verbose,
+                TITLE_INDEXING,
+                "{} {}",
+                i.to_string().blue(),
+                strip_dir(p, &music_dir).yellow()
+            );
+            i += 1;
+        });
+        if !verbose {
+            print_verbose!(
+                verbose,
+                TITLE_INDEXING,
+                "{} {}",
+                (i - 1).to_string().blue(),
+                "files indexed".green()
+            );
+        }
+        println!();
+    }
 
     let mut checks = Checks::from(&index);
     if !no_check {
-        println!("╭────────────────────────────────────────────────────────────╮");
-        println!("│ Checking                                                   │");
-        println!("╰────────────────────────────────────────────────────────────╯");
+        let verbose = verbosity >= 2;
+        print_title_verbose(verbose, TITLE_CHECKING);
 
         if !keep_embedded_artworks {
+            print_verbose!(verbose, TITLE_CHECKING, "{}", "embedded artworks".yellow());
             checks.remove_embedded_artworks();
         }
 
@@ -73,24 +105,31 @@ fn main() {
         //changes.check_inconsitent_albums(inconsitent_albums_dialog);
         //changes.check_inconsitent_total_tracks(inconsitent_total_tracks_dialog);
         //changes.check_inconsitent_total_discs(inconsitent_total_discs_dialog);
+
+        if !verbose {
+            print_verbose!(verbose, TITLE_CHECKING, "{}", "done".green());
+        }
+        println!();
     }
 
     let changes = Changes::generate(checks, &output_dir);
 
     if changes.is_empty() {
-        println!("{}", "nothing to do".green());
+        let verbose = verbosity >= 2;
+        print_title_verbose(verbose, TITLE_CHANGES);
+        print_verbose!(verbose, TITLE_CHANGES, "{}\n", "nothing to do".green());
     } else {
-        println!("╭────────────────────────────────────────────────────────────╮");
-        println!("│ Changes                                                    │");
-        println!("╰────────────────────────────────────────────────────────────╯");
-        if verbosity >= 1 {
+        let verbose = verbosity >= 1;
+        print_title_verbose(verbose, TITLE_CHANGES);
+
+        if verbose {
             if !changes.dir_creations.is_empty() {
                 println!("dirs:");
                 for (i, d) in changes.dir_creations.iter().enumerate() {
                     println!(
                         "{} create {}",
                         (i + 1).to_string().blue(),
-                        format!("{}", d.path.display()).green()
+                        format!("{}", d.path.display()).yellow()
                     );
                 }
                 println!();
@@ -154,22 +193,25 @@ fn main() {
         if dry_run {
             println!("skip writing dryrun...");
         } else {
-            println!("╭────────────────────────────────────────────────────────────╮");
-            println!("│ Writing                                                    │");
-            println!("╰────────────────────────────────────────────────────────────╯");
+            let verbose = verbosity >= 2;
+            print_title_verbose(verbose, TITLE_WRITING);
+
             changes.dir_creations(&mut |d, r| {
                 match r {
                     Ok(_) => {
                         print_verbose!(
-                            verbosity >= 2,
+                            verbose,
+                            TITLE_WRITING,
                             "{} created dir {}",
                             i.to_string().blue(),
                             d.path.display()
                         );
                     }
                     Err(e) => {
-                        println!(
-                            "{} {} creating dir {}:\n{}",
+                        print_verbose!(
+                            false,
+                            TITLE_WRITING,
+                            "{} {} creating dir {}: {}\n",
                             i.to_string().blue(),
                             "error".red(),
                             d.path.display(),
@@ -185,18 +227,20 @@ fn main() {
             changes.song_operations(op_type, &mut |o, r| {
                 match r {
                     Ok(_) => {
+                        let display_obj = display::SongOp(
+                            &music_dir,
+                            &output_dir,
+                            o,
+                            op_type_sim_past,
+                            rename_sim_past,
+                            verbosity,
+                        );
                         print_verbose!(
-                            verbosity >= 2,
+                            verbose,
+                            TITLE_WRITING,
                             "{} {}",
                             i.to_string().blue(),
-                            display::SongOp(
-                                &music_dir,
-                                &output_dir,
-                                o,
-                                op_type_sim_past,
-                                rename_sim_past,
-                                verbosity,
-                            )
+                            display_obj
                         );
                     }
                     Err(e) => {
@@ -223,18 +267,20 @@ fn main() {
             changes.file_operations(op_type, &mut |f, r| {
                 match r {
                     Ok(_) => {
+                        let display_obj = display::FileOp(
+                            &music_dir,
+                            &output_dir,
+                            f.old_path,
+                            &f.new_path,
+                            op_type_sim_past,
+                            rename_sim_past,
+                        );
                         print_verbose!(
-                            verbosity >= 2,
+                            verbose,
+                            TITLE_WRITING,
                             "{} {}",
                             i.to_string().blue(),
-                            display::FileOp(
-                                &music_dir,
-                                &output_dir,
-                                f.old_path,
-                                &f.new_path,
-                                op_type_sim_past,
-                                rename_sim_past,
-                            )
+                            display_obj
                         );
                     }
                     Err(e) => {
@@ -258,31 +304,60 @@ fn main() {
                 i += 1;
             });
         }
+
+        if !verbose {
+            print_verbose!(
+                verbose,
+                TITLE_WRITING,
+                "{} {} {} {} {}",
+                num_dir_creations.to_string().blue(),
+                if num_dir_creations == 1 { "dir created" } else { "dirs created" }.green(),
+                num_file_moves.to_string().blue(),
+                if num_file_moves == 1 { "file" } else { "files" }.green(),
+                op_type_sim_past.green()
+            );
+        }
+
         println!();
     }
 
     if !no_cleanup {
-        println!("╭────────────────────────────────────────────────────────────╮");
-        println!("│ Cleanup                                                    │");
-        println!("╰────────────────────────────────────────────────────────────╯");
+        let verbose = verbosity >= 2;
+        print_title_verbose(verbose, TITLE_CLEANUP);
+
         let mut cleanup = Cleanup::from(music_dir.clone());
         let mut i = 1;
         cleanup.check(&mut |p| {
             print_verbose!(
-                verbosity == 2,
+                verbose,
+                TITLE_CLEANUP,
                 "{} {}",
                 i.to_string().blue(),
-                strip_dir(p, &music_dir).green()
+                strip_dir(p, &music_dir).yellow()
             );
 
             i += 1;
         });
+        if !verbose {
+            print_verbose!(
+                verbose,
+                TITLE_CLEANUP,
+                "{} {}",
+                (i - 1).to_string().blue(),
+                "dirs checked".green()
+            );
+        }
         println!();
 
         if cleanup.dir_deletions.is_empty() {
-            println!("{}", "nothing to cleanup".green());
+            let verbose = verbosity >= 2;
+            print_title_verbose(verbose, TITLE_DELETIONS);
+            print_verbose!(verbose, TITLE_DELETIONS, "{}\n", "nothing to cleanup".green());
         } else {
-            if verbosity >= 1 && !cleanup.dir_deletions.is_empty() {
+            let verbose = verbosity >= 1;
+            print_title_verbose(verbose, TITLE_DELETIONS);
+
+            if verbose && !cleanup.dir_deletions.is_empty() {
                 println!("dirs:");
 
                 for (i, d) in cleanup.dir_deletions.iter().enumerate() {
@@ -296,8 +371,11 @@ fn main() {
             }
 
             let num_dir_deletions = cleanup.dir_deletions.len();
-            println!(
-                "{num_dir_deletions} {} will be deleted.",
+            print_verbose!(
+                verbose,
+                TITLE_DELETIONS,
+                "{} {} will be deleted\n",
+                num_dir_deletions.to_string().blue(),
                 if num_dir_deletions == 1 { "dir" } else { "dirs" }
             );
 
@@ -313,21 +391,34 @@ fn main() {
             if dry_run {
                 println!("skip cleaning up dryrun...");
             } else {
+                let verbose = verbosity >= 1;
+                print_title_verbose(verbose, TITLE_CLEANING);
+
                 let mut i = 1;
                 cleanup.excecute(&mut |p| {
                     print_verbose!(
-                        verbosity >= 1,
+                        verbose,
+                        TITLE_CLEANING,
                         "{} deleted {}",
                         i.to_string().blue(),
                         strip_dir(p, &music_dir).red()
                     );
                     i += 1;
                 });
+
+                if !verbose {
+                    print_verbose!(
+                        verbose,
+                        TITLE_CLEANING,
+                        "{} {}",
+                        (i - 1).to_string().blue(),
+                        "dirs deleted".green()
+                    );
+                }
+                println!();
             }
         }
     }
-
-    println!("{}", "done".green());
 }
 
 //fn inconsitent_artists_dialog(
