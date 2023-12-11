@@ -189,13 +189,13 @@ fn main() {
             }
         }
 
-        let mut i = 1;
         if dry_run {
             println!("skip writing dryrun...");
         } else {
             let verbose = verbosity >= 2;
             print_title_verbose(verbose, TITLE_WRITING);
 
+            let mut dir_creation_idx = 1;
             changes.dir_creations(&mut |d, r| {
                 match r {
                     Ok(_) => {
@@ -203,7 +203,7 @@ fn main() {
                             verbose,
                             TITLE_WRITING,
                             "{} created dir {}",
-                            i.to_string().blue(),
+                            dir_creation_idx.to_string().blue(),
                             d.path.display()
                         );
                     }
@@ -212,7 +212,7 @@ fn main() {
                             false,
                             TITLE_WRITING,
                             "{} {} creating dir {}: {}\n",
-                            i.to_string().blue(),
+                            dir_creation_idx.to_string().blue(),
                             "error".red(),
                             d.path.display(),
                             e.to_string().red()
@@ -220,10 +220,10 @@ fn main() {
                     }
                 }
 
-                i += 1;
+                dir_creation_idx += 1;
             });
 
-            let mut i = 1;
+            let mut file_operation_idx = 1;
             changes.song_operations(op_type, &mut |o, r| {
                 match r {
                     Ok(_) => {
@@ -239,14 +239,14 @@ fn main() {
                             verbose,
                             TITLE_WRITING,
                             "{} {}",
-                            i.to_string().blue(),
+                            file_operation_idx.to_string().blue(),
                             display_obj
                         );
                     }
                     Err(e) => {
                         println!(
                             "{} {} {}:\n{}",
-                            i.to_string().blue(),
+                            file_operation_idx.to_string().blue(),
                             "error".red(),
                             display::SongOp(
                                 &music_dir,
@@ -261,7 +261,7 @@ fn main() {
                     }
                 }
 
-                i += 1;
+                file_operation_idx += 1;
             });
 
             changes.file_operations(op_type, &mut |f, r| {
@@ -279,14 +279,14 @@ fn main() {
                             verbose,
                             TITLE_WRITING,
                             "{} {}",
-                            i.to_string().blue(),
+                            file_operation_idx.to_string().blue(),
                             display_obj
                         );
                     }
                     Err(e) => {
                         print!(
                             "{} {} {}:\n{}",
-                            i.to_string().blue(),
+                            file_operation_idx.to_string().blue(),
                             "error".red(),
                             display::FileOp(
                                 &music_dir,
@@ -301,21 +301,21 @@ fn main() {
                     }
                 }
 
-                i += 1;
+                file_operation_idx += 1;
             });
-        }
 
-        if !verbose {
-            print_verbose!(
-                verbose,
-                TITLE_WRITING,
-                "{} {} {} {} {}",
-                num_dir_creations.to_string().blue(),
-                if num_dir_creations == 1 { "dir created" } else { "dirs created" }.green(),
-                num_file_moves.to_string().blue(),
-                if num_file_moves == 1 { "file" } else { "files" }.green(),
-                op_type_sim_past.green()
-            );
+            if !verbose {
+                print_verbose!(
+                    verbose,
+                    TITLE_WRITING,
+                    "{} {} {} {} {}",
+                    num_dir_creations.to_string().blue(),
+                    if num_dir_creations == 1 { "dir created" } else { "dirs created" }.green(),
+                    num_file_moves.to_string().blue(),
+                    if num_file_moves == 1 { "file" } else { "files" }.green(),
+                    op_type_sim_past.green()
+                );
+            }
         }
 
         println!();
