@@ -19,6 +19,11 @@ const TITLE_CLEANUP: &str = "CLEANUP";
 const TITLE_DELETIONS: &str = "DELETIONS";
 const TITLE_CLEANING: &str = "CLEANING";
 
+const MAX_SUBTITLE_WITH: usize = 6;
+const SUBTITLE_DIRS: &str = "dirs";
+const SUBTITLE_SONGS: &str = "songs";
+const SUBTITLE_OTHERS: &str = "others";
+
 fn print_title_verbose(verbose: bool, title: &str) {
     if verbose {
         print_title(title)
@@ -28,6 +33,11 @@ fn print_title_verbose(verbose: bool, title: &str) {
 fn print_title(title: &str) {
     let padding = MAX_TITLE_WITH - title.len() + 1;
     println!("{} ", format!(" {title}{:padding$}", "").purple().on_black());
+}
+
+fn print_subtitle(title: &str) {
+    let padding = MAX_SUBTITLE_WITH - title.len() + 1;
+    println!("{} ", format!(" {title}{:padding$}", "").cyan().on_black());
 }
 
 macro_rules! print_verbose {
@@ -124,7 +134,7 @@ fn main() {
 
         if verbose {
             if !changes.dir_creations.is_empty() {
-                println!("dirs:");
+                print_subtitle(SUBTITLE_DIRS);
                 for (i, d) in changes.dir_creations.iter().enumerate() {
                     println!(
                         "{} create {}",
@@ -135,7 +145,7 @@ fn main() {
                 println!();
             }
             if !changes.song_operations.is_empty() {
-                println!("songs:");
+                print_subtitle(SUBTITLE_SONGS);
                 for (i, o) in changes.song_operations.iter().enumerate() {
                     println!(
                         "{} {}",
@@ -153,7 +163,7 @@ fn main() {
                 println!();
             }
             if !changes.file_operations.is_empty() {
-                println!("others:");
+                print_subtitle(SUBTITLE_OTHERS);
                 for (i, f) in changes.file_operations.iter().enumerate() {
                     println!(
                         "{} {}",
@@ -358,7 +368,7 @@ fn main() {
             print_title_verbose(verbose, TITLE_DELETIONS);
 
             if verbose && !cleanup.dir_deletions.is_empty() {
-                println!("dirs:");
+                print_subtitle(SUBTITLE_DIRS);
 
                 for (i, d) in cleanup.dir_deletions.iter().enumerate() {
                     println!(
