@@ -391,7 +391,7 @@ fn main() {
             if dry_run {
                 println!("skip cleaning up dryrun...");
             } else {
-                let verbose = verbosity >= 1;
+                let verbose = verbosity >= 2;
                 print_title_verbose(verbose, TITLE_CLEANING);
 
                 let mut i = 1;
@@ -412,7 +412,7 @@ fn main() {
                         TITLE_CLEANING,
                         "{} {}",
                         (i - 1).to_string().blue(),
-                        "dirs deleted".green()
+                        if i == 1 { "dir deleted" } else { "dirs deleted" }.green()
                     );
                 }
                 println!();
