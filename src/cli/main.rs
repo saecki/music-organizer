@@ -504,8 +504,8 @@ fn inconsitent_artists_dialog(a: &ReleaseArtists, b: &ReleaseArtists) -> Value<V
                 } else {
                     println!(
                         "      {:02} - {} - {}",
-                        artist.names.join(", "),
                         s.track_number.unwrap_or(0),
+                        artist.names.join(", "),
                         s.title
                     );
                 }
