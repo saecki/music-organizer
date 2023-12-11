@@ -56,4 +56,8 @@ impl Cleanup {
             f(&d.path);
         }
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.dir_deletions.is_empty()
+    }
 }

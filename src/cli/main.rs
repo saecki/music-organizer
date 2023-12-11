@@ -23,6 +23,22 @@ const SUBTITLE_DIRS: &str = "dirs";
 const SUBTITLE_SONGS: &str = "songs";
 const SUBTITLE_OTHERS: &str = "others";
 
+const RENAME_TENSES: Tenses =
+    Tenses { sim_pres: "rename", pres_prog: "renaming", sim_past: "renamed" };
+const MOVE_TENSES: Tenses = Tenses { sim_pres: "move", pres_prog: "moving", sim_past: "moved" };
+const COPY_TENSES: Tenses = Tenses { sim_pres: "copy", pres_prog: "copying", sim_past: "copied" };
+
+struct Dict {
+    op_type: Tenses,
+    rename: Tenses,
+}
+
+struct Tenses {
+    sim_pres: &'static str,
+    pres_prog: &'static str,
+    sim_past: &'static str,
+}
+
 fn print_title_verbose(verbose: bool, title: &str) {
     if verbose {
         print_title(title)
@@ -54,386 +70,417 @@ macro_rules! print_verbose {
 }
 
 fn main() {
-    let Args {
-        music_dir,
-        output_dir,
-        verbosity,
-        op_type,
-        assume_yes,
-        dry_run,
-        no_check,
-        keep_embedded_artworks,
-        no_cleanup,
-    } = args::parse_args();
-
-    let (op_type_sim_pres, op_type_pres_prog, op_type_sim_past) = match op_type {
-        FileOpType::Copy => ("copy", "copying", "copied"),
-        FileOpType::Move => ("move", "moving", "moved"),
+    let args = args::parse_args();
+    let dict = Dict {
+        op_type: match args.op_type {
+            FileOpType::Move => MOVE_TENSES,
+            FileOpType::Copy => COPY_TENSES,
+        },
+        rename: RENAME_TENSES,
     };
-    let (rename_sim_pres, rename_pres_prog, rename_sim_past) = ("rename", "renaming", "renamed");
 
-    let mut index = MusicIndex::from(music_dir.clone());
-    {
-        let verbose = verbosity >= 2;
-        print_title_verbose(verbose, TITLE_INDEXING);
+    // indexing
+    let mut index = MusicIndex::from(args.music_dir.clone());
+    display_indexing(&mut index, &args);
 
-        let mut i = 1;
-        index.read(&mut |p| {
-            print_verbose!(
-                verbose,
-                TITLE_INDEXING,
-                "{} {}",
-                i.to_string().blue(),
-                strip_dir(p, &music_dir).yellow()
-            );
-            i += 1;
-        });
-        if !verbose {
-            print_verbose!(
-                verbose,
-                TITLE_INDEXING,
-                "{} {}",
-                (i - 1).to_string().blue(),
-                "files indexed".green()
-            );
-        }
-        println!();
-    }
-
+    // checking
     let mut checks = Checks::from(&index);
-    if !no_check {
-        let verbose = verbosity >= 2;
-        print_title_verbose(verbose, TITLE_CHECKING);
-
-        if !keep_embedded_artworks {
-            print_verbose!(verbose, TITLE_CHECKING, "{}", "embedded artworks".yellow());
-            checks.remove_embedded_artworks();
-        }
-
-        //changes.check_inconsitent_release_artists(inconsitent_artists_dialog);
-        //changes.check_inconsitent_albums(inconsitent_albums_dialog);
-        //changes.check_inconsitent_total_tracks(inconsitent_total_tracks_dialog);
-        //changes.check_inconsitent_total_discs(inconsitent_total_discs_dialog);
-
-        if !verbose {
-            print_verbose!(verbose, TITLE_CHECKING, "{}", "done".green());
-        }
-        println!();
+    if !args.no_check {
+        display_checking(&mut checks, &args);
     }
 
-    let changes = Changes::generate(checks, &output_dir);
+    // changes
+    let changes = Changes::generate(checks, &args.output_dir);
+    display_changes(&changes, &args, &dict);
 
-    if changes.is_empty() {
-        let verbose = verbosity >= 2;
-        print_title_verbose(verbose, TITLE_CHANGES);
-        print_verbose!(verbose, TITLE_CHANGES, "{}\n", "nothing to do".green());
-    } else {
-        let verbose = verbosity >= 1;
-        print_title_verbose(verbose, TITLE_CHANGES);
-
-        if verbose {
-            if !changes.dir_creations.is_empty() {
-                print_subtitle(SUBTITLE_DIRS);
-                for (i, d) in changes.dir_creations.iter().enumerate() {
-                    println!(
-                        "{} create {}",
-                        (i + 1).to_string().blue(),
-                        format!("{}", d.path.display()).yellow()
-                    );
-                }
-                println!();
-            }
-            if !changes.song_operations.is_empty() {
-                print_subtitle(SUBTITLE_SONGS);
-                for (i, o) in changes.song_operations.iter().enumerate() {
-                    println!(
-                        "{} {}",
-                        (i + 1).to_string().blue(),
-                        display::SongOp(
-                            &music_dir,
-                            &output_dir,
-                            o,
-                            op_type_sim_pres,
-                            rename_sim_pres,
-                            verbosity,
-                        )
-                    );
-                }
-                println!();
-            }
-            if !changes.file_operations.is_empty() {
-                print_subtitle(SUBTITLE_OTHERS);
-                for (i, f) in changes.file_operations.iter().enumerate() {
-                    println!(
-                        "{} {}",
-                        (i + 1).to_string().blue(),
-                        display::FileOp(
-                            &music_dir,
-                            &output_dir,
-                            f.old_path,
-                            &f.new_path,
-                            op_type_sim_pres,
-                            rename_sim_pres,
-                        )
-                    );
-                }
-                println!();
-            }
-        }
-
-        let num_dir_creations = changes.dir_creations.len();
-        let num_file_moves = changes.song_operations.len() + changes.file_operations.len();
-        print_verbose!(
-            verbose,
-            TITLE_CHANGES,
-            "{} {} will be created{}{} {} will be {op_type_sim_past}",
-            num_dir_creations.to_string().blue(),
-            if num_dir_creations == 1 { "dir" } else { "dirs" },
-            if verbose { '\n' } else { ' ' },
-            num_file_moves.to_string().blue(),
-            if num_file_moves == 1 { "file" } else { "files" }
-        );
-
-        if !assume_yes && !dry_run {
-            if !verbose {
-                println!();
-            }
+    if !changes.is_empty() {
+        // writing
+        if !args.assume_yes && !args.dry_run {
             let ok = confirm_input("continue");
             if !ok {
                 successfull_early_exit();
             }
         }
-
-        if dry_run {
-            println!("skip writing dryrun...");
-        } else {
-            let verbose = verbosity >= 2;
-            print_title_verbose(verbose, TITLE_WRITING);
-
-            let mut dir_creation_idx = 1;
-            changes.dir_creations(&mut |d, r| {
-                match r {
-                    Ok(_) => {
-                        print_verbose!(
-                            verbose,
-                            TITLE_WRITING,
-                            "{} created dir {}",
-                            dir_creation_idx.to_string().blue(),
-                            d.path.display()
-                        );
-                    }
-                    Err(e) => {
-                        print_verbose!(
-                            false,
-                            TITLE_WRITING,
-                            "{} {} creating dir {}: {}\n",
-                            dir_creation_idx.to_string().blue(),
-                            "error".red(),
-                            d.path.display(),
-                            e.to_string().red()
-                        );
-                    }
-                }
-
-                dir_creation_idx += 1;
-            });
-
-            let mut file_operation_idx = 1;
-            changes.song_operations(op_type, &mut |o, r| {
-                match r {
-                    Ok(_) => {
-                        let display_obj = display::SongOp(
-                            &music_dir,
-                            &output_dir,
-                            o,
-                            op_type_sim_past,
-                            rename_sim_past,
-                            verbosity,
-                        );
-                        print_verbose!(
-                            verbose,
-                            TITLE_WRITING,
-                            "{} {}",
-                            file_operation_idx.to_string().blue(),
-                            display_obj
-                        );
-                    }
-                    Err(e) => {
-                        println!(
-                            "{} {} {}:\n{}",
-                            file_operation_idx.to_string().blue(),
-                            "error".red(),
-                            display::SongOp(
-                                &music_dir,
-                                &output_dir,
-                                o,
-                                op_type_pres_prog,
-                                rename_pres_prog,
-                                VERBOSE
-                            ),
-                            e.to_string().red(),
-                        );
-                    }
-                }
-
-                file_operation_idx += 1;
-            });
-
-            changes.file_operations(op_type, &mut |f, r| {
-                match r {
-                    Ok(_) => {
-                        let display_obj = display::FileOp(
-                            &music_dir,
-                            &output_dir,
-                            f.old_path,
-                            &f.new_path,
-                            op_type_sim_past,
-                            rename_sim_past,
-                        );
-                        print_verbose!(
-                            verbose,
-                            TITLE_WRITING,
-                            "{} {}",
-                            file_operation_idx.to_string().blue(),
-                            display_obj
-                        );
-                    }
-                    Err(e) => {
-                        print!(
-                            "{} {} {}:\n{}",
-                            file_operation_idx.to_string().blue(),
-                            "error".red(),
-                            display::FileOp(
-                                &music_dir,
-                                &output_dir,
-                                f.old_path,
-                                &f.new_path,
-                                op_type_pres_prog,
-                                rename_pres_prog,
-                            ),
-                            e.to_string().red(),
-                        );
-                    }
-                }
-
-                file_operation_idx += 1;
-            });
-
-            if !verbose {
-                print_verbose!(
-                    verbose,
-                    TITLE_WRITING,
-                    "{} {} {} {} {}",
-                    num_dir_creations.to_string().blue(),
-                    if num_dir_creations == 1 { "dir created" } else { "dirs created" }.green(),
-                    num_file_moves.to_string().blue(),
-                    if num_file_moves == 1 { "file" } else { "files" }.green(),
-                    op_type_sim_past.green()
-                );
-            }
-        }
-
-        println!();
+        display_writing(&changes, &args, &dict)
     }
 
-    if !no_cleanup {
-        let verbose = verbosity >= 2;
-        print_title_verbose(verbose, TITLE_CLEANUP);
+    if !args.no_cleanup {
+        // cleanup
+        let mut cleanup = Cleanup::from(args.music_dir.clone());
+        display_cleanup(&mut cleanup, &args);
 
-        let mut cleanup = Cleanup::from(music_dir.clone());
-        let mut i = 1;
-        cleanup.check(&mut |p| {
-            print_verbose!(
-                verbose,
-                TITLE_CLEANUP,
-                "{} {}",
-                i.to_string().blue(),
-                strip_dir(p, &music_dir).yellow()
-            );
+        // deletions
+        display_deletions(&cleanup, &args);
 
-            i += 1;
-        });
-        if !verbose {
-            print_verbose!(
-                verbose,
-                TITLE_CLEANUP,
-                "{} {}",
-                (i - 1).to_string().blue(),
-                "dirs checked".green()
-            );
-        }
-        println!();
-
-        if cleanup.dir_deletions.is_empty() {
-            let verbose = verbosity >= 2;
-            print_title_verbose(verbose, TITLE_DELETIONS);
-            print_verbose!(verbose, TITLE_DELETIONS, "{}\n", "nothing to cleanup".green());
-        } else {
-            let verbose = verbosity >= 1;
-            print_title_verbose(verbose, TITLE_DELETIONS);
-
-            if verbose && !cleanup.dir_deletions.is_empty() {
-                print_subtitle(SUBTITLE_DIRS);
-
-                for (i, d) in cleanup.dir_deletions.iter().enumerate() {
-                    println!(
-                        "{} delete {}",
-                        (i + 1).to_string().blue(),
-                        strip_dir(&d.path, &music_dir).red(),
-                    );
-                }
-                println!();
-            }
-
-            let num_dir_deletions = cleanup.dir_deletions.len();
-            print_verbose!(
-                verbose,
-                TITLE_DELETIONS,
-                "{} {} will be deleted",
-                num_dir_deletions.to_string().blue(),
-                if num_dir_deletions == 1 { "dir" } else { "dirs" }
-            );
-
-            if !assume_yes && !dry_run {
-                if !verbose {
-                    println!();
-                }
+        if !cleanup.is_empty() {
+            // cleaning
+            if !args.assume_yes && !args.dry_run {
                 let ok = confirm_input("continue");
                 if !ok {
                     successfull_early_exit();
                 }
             }
+            display_cleaning(&cleanup, &args);
+        }
+    }
+}
 
-            if dry_run {
-                println!("skip cleaning up dryrun...");
-            } else {
-                let verbose = verbosity >= 2;
-                print_title_verbose(verbose, TITLE_CLEANING);
+fn display_indexing(index: &mut MusicIndex, args: &Args) {
+    let verbose = args.verbosity >= 2;
+    print_title_verbose(verbose, TITLE_INDEXING);
 
-                let mut i = 1;
-                cleanup.excecute(&mut |p| {
-                    print_verbose!(
-                        verbose,
-                        TITLE_CLEANING,
-                        "{} deleted {}",
-                        i.to_string().blue(),
-                        strip_dir(p, &music_dir).red()
-                    );
-                    i += 1;
-                });
+    let mut i = 1;
+    index.read(&mut |p| {
+        print_verbose!(
+            verbose,
+            TITLE_INDEXING,
+            "{} {}",
+            i.to_string().blue(),
+            strip_dir(p, &args.music_dir).yellow()
+        );
+        i += 1;
+    });
+    if !verbose {
+        print_verbose!(
+            verbose,
+            TITLE_INDEXING,
+            "{} {}",
+            (i - 1).to_string().blue(),
+            "files indexed".green()
+        );
+    }
+    println!();
+}
 
-                if !verbose {
-                    print_verbose!(
-                        verbose,
-                        TITLE_CLEANING,
-                        "{} {}",
-                        (i - 1).to_string().blue(),
-                        if i == 1 { "dir deleted" } else { "dirs deleted" }.green()
-                    );
-                }
-                println!();
+fn display_checking(checks: &mut Checks, args: &Args) {
+    let verbose = args.verbosity >= 2;
+    print_title_verbose(verbose, TITLE_CHECKING);
+
+    if !args.keep_embedded_artworks {
+        print_verbose!(verbose, TITLE_CHECKING, "{}", "embedded artworks".yellow());
+        checks.remove_embedded_artworks();
+    }
+
+    //changes.check_inconsitent_release_artists(inconsitent_artists_dialog);
+    //changes.check_inconsitent_albums(inconsitent_albums_dialog);
+    //changes.check_inconsitent_total_tracks(inconsitent_total_tracks_dialog);
+    //changes.check_inconsitent_total_discs(inconsitent_total_discs_dialog);
+
+    if !verbose {
+        print_verbose!(verbose, TITLE_CHECKING, "{}", "done".green());
+    }
+
+    println!();
+}
+
+fn display_changes(changes: &Changes, args: &Args, dict: &Dict) {
+    if changes.is_empty() {
+        let verbose = args.verbosity >= 2;
+        print_title_verbose(verbose, TITLE_CHANGES);
+        print_verbose!(verbose, TITLE_CHANGES, "{}\n", "nothing to do".green());
+        return;
+    }
+
+    let verbose = args.verbosity >= 1;
+    print_title_verbose(verbose, TITLE_CHANGES);
+
+    if verbose {
+        if !changes.dir_creations.is_empty() {
+            print_subtitle(SUBTITLE_DIRS);
+            for (i, d) in changes.dir_creations.iter().enumerate() {
+                println!(
+                    "{} create {}",
+                    (i + 1).to_string().blue(),
+                    format!("{}", d.path.display()).yellow()
+                );
+            }
+            println!();
+        }
+        if !changes.song_operations.is_empty() {
+            print_subtitle(SUBTITLE_SONGS);
+            for (i, o) in changes.song_operations.iter().enumerate() {
+                println!(
+                    "{} {}",
+                    (i + 1).to_string().blue(),
+                    display::SongOp(
+                        &args.music_dir,
+                        &args.output_dir,
+                        o,
+                        dict.op_type.sim_pres,
+                        dict.rename.sim_pres,
+                        args.verbosity,
+                    )
+                );
+            }
+            println!();
+        }
+        if !changes.file_operations.is_empty() {
+            print_subtitle(SUBTITLE_OTHERS);
+            for (i, f) in changes.file_operations.iter().enumerate() {
+                println!(
+                    "{} {}",
+                    (i + 1).to_string().blue(),
+                    display::FileOp(
+                        &args.music_dir,
+                        &args.output_dir,
+                        f.old_path,
+                        &f.new_path,
+                        dict.op_type.sim_pres,
+                        dict.rename.sim_pres,
+                    )
+                );
+            }
+            println!();
+        }
+    }
+
+    let num_dir_creations = changes.dir_creations.len();
+    let num_file_ops = changes.song_operations.len() + changes.file_operations.len();
+    print_verbose!(
+        verbose,
+        TITLE_CHANGES,
+        "{} {} will be created{}{} {} will be {}",
+        num_dir_creations.to_string().blue(),
+        if num_dir_creations == 1 { "dir" } else { "dirs" },
+        if verbose { '\n' } else { ' ' },
+        num_file_ops.to_string().blue(),
+        if num_file_ops == 1 { "file" } else { "files" },
+        dict.op_type.sim_past
+    );
+
+    println!();
+}
+
+fn display_writing(changes: &Changes, args: &Args, dict: &Dict) {
+    if args.dry_run {
+        println!("skip writing dryrun...");
+        return;
+    }
+
+    let verbose = args.verbosity >= 2;
+    print_title_verbose(verbose, TITLE_WRITING);
+
+    let mut dir_creation_idx = 1;
+    changes.dir_creations(&mut |d, r| {
+        match r {
+            Ok(_) => {
+                print_verbose!(
+                    verbose,
+                    TITLE_WRITING,
+                    "{} created dir {}",
+                    dir_creation_idx.to_string().blue(),
+                    d.path.display()
+                );
+            }
+            Err(e) => {
+                print_verbose!(
+                    false,
+                    TITLE_WRITING,
+                    "{} {} creating dir {}: {}\n",
+                    dir_creation_idx.to_string().blue(),
+                    "error".red(),
+                    d.path.display(),
+                    e.to_string().red()
+                );
             }
         }
+
+        dir_creation_idx += 1;
+    });
+
+    let mut file_operation_idx = 1;
+    changes.song_operations(args.op_type, &mut |o, r| {
+        match r {
+            Ok(_) => {
+                let display_obj = display::SongOp(
+                    &args.music_dir,
+                    &args.output_dir,
+                    o,
+                    dict.op_type.sim_past,
+                    dict.rename.sim_past,
+                    args.verbosity,
+                );
+                print_verbose!(
+                    verbose,
+                    TITLE_WRITING,
+                    "{} {}",
+                    file_operation_idx.to_string().blue(),
+                    display_obj
+                );
+            }
+            Err(e) => {
+                println!(
+                    "{} {} {}:\n{}",
+                    file_operation_idx.to_string().blue(),
+                    "error".red(),
+                    display::SongOp(
+                        &args.music_dir,
+                        &args.output_dir,
+                        o,
+                        dict.op_type.pres_prog,
+                        dict.rename.pres_prog,
+                        VERBOSE
+                    ),
+                    e.to_string().red(),
+                );
+            }
+        }
+
+        file_operation_idx += 1;
+    });
+
+    changes.file_operations(args.op_type, &mut |f, r| {
+        match r {
+            Ok(_) => {
+                let display_obj = display::FileOp(
+                    &args.music_dir,
+                    &args.output_dir,
+                    f.old_path,
+                    &f.new_path,
+                    dict.op_type.sim_past,
+                    dict.rename.sim_past,
+                );
+                print_verbose!(
+                    verbose,
+                    TITLE_WRITING,
+                    "{} {}",
+                    file_operation_idx.to_string().blue(),
+                    display_obj
+                );
+            }
+            Err(e) => {
+                print!(
+                    "{} {} {}:\n{}",
+                    file_operation_idx.to_string().blue(),
+                    "error".red(),
+                    display::FileOp(
+                        &args.music_dir,
+                        &args.output_dir,
+                        f.old_path,
+                        &f.new_path,
+                        dict.op_type.pres_prog,
+                        dict.rename.pres_prog,
+                    ),
+                    e.to_string().red(),
+                );
+            }
+        }
+
+        file_operation_idx += 1;
+    });
+
+    if !verbose {
+        let num_dir_creations = dir_creation_idx - 1;
+        let num_file_ops = file_operation_idx - 1;
+        print_verbose!(
+            verbose,
+            TITLE_WRITING,
+            "{} {} {} {} {}",
+            num_dir_creations.to_string().blue(),
+            if num_dir_creations == 1 { "dir created" } else { "dirs created" }.green(),
+            num_file_ops.to_string().blue(),
+            if num_file_ops == 1 { "file" } else { "files" }.green(),
+            dict.op_type.sim_past.green()
+        );
+    }
+
+    println!();
+}
+
+fn display_cleanup(cleanup: &mut Cleanup, args: &Args) {
+    let verbose = args.verbosity >= 2;
+    print_title_verbose(verbose, TITLE_CLEANUP);
+
+    let mut i = 1;
+    cleanup.check(&mut |p| {
+        print_verbose!(
+            verbose,
+            TITLE_CLEANUP,
+            "{} {}",
+            i.to_string().blue(),
+            strip_dir(p, &args.music_dir).yellow()
+        );
+
+        i += 1;
+    });
+
+    if !verbose {
+        print_verbose!(
+            verbose,
+            TITLE_CLEANUP,
+            "{} {}",
+            (i - 1).to_string().blue(),
+            "dirs checked".green()
+        );
+    }
+
+    println!();
+}
+
+fn display_deletions(cleanup: &Cleanup, args: &Args) {
+    if cleanup.is_empty() {
+        let verbose = args.verbosity >= 2;
+        print_title_verbose(verbose, TITLE_DELETIONS);
+        print_verbose!(verbose, TITLE_DELETIONS, "{}\n", "nothing to cleanup".green());
+    } else {
+        let verbose = args.verbosity >= 1;
+        print_title_verbose(verbose, TITLE_DELETIONS);
+
+        if verbose {
+            print_subtitle(SUBTITLE_DIRS);
+
+            for (i, d) in cleanup.dir_deletions.iter().enumerate() {
+                println!(
+                    "{} delete {}",
+                    (i + 1).to_string().blue(),
+                    strip_dir(&d.path, &args.music_dir).red(),
+                );
+            }
+            println!();
+        }
+
+        let num_dir_deletions = cleanup.dir_deletions.len();
+        print_verbose!(
+            verbose,
+            TITLE_DELETIONS,
+            "{} {} will be deleted",
+            num_dir_deletions.to_string().blue(),
+            if num_dir_deletions == 1 { "dir" } else { "dirs" }
+        );
+
+        println!();
+    }
+}
+
+fn display_cleaning(cleanup: &Cleanup, args: &Args) {
+    if args.dry_run {
+        println!("skip cleaning up dryrun...");
+    } else {
+        let verbose = args.verbosity >= 2;
+        print_title_verbose(verbose, TITLE_CLEANING);
+
+        let mut i = 1;
+        cleanup.excecute(&mut |p| {
+            print_verbose!(
+                verbose,
+                TITLE_CLEANING,
+                "{} deleted {}",
+                i.to_string().blue(),
+                strip_dir(p, &args.music_dir).red()
+            );
+            i += 1;
+        });
+
+        if !verbose {
+            print_verbose!(
+                verbose,
+                TITLE_CLEANING,
+                "{} {}",
+                (i - 1).to_string().blue(),
+                if i == 1 { "dir deleted" } else { "dirs deleted" }.green()
+            );
+        }
+        println!();
     }
 }
 
