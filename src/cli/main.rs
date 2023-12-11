@@ -1,7 +1,6 @@
 use colored::Colorize;
 use music_organizer::{Changes, Checks, Cleanup, FileOpType, MusicIndex};
 use std::io::Write;
-use std::process::exit;
 
 use crate::args::Args;
 use crate::display::strip_dir;
@@ -184,18 +183,24 @@ fn main() {
 
         let num_dir_creations = changes.dir_creations.len();
         let num_file_moves = changes.song_operations.len() + changes.file_operations.len();
-        println!(
-            "{num_dir_creations} {} will be created.\n{num_file_moves} {} will be {op_type_sim_past}.",
+        print_verbose!(
+            verbose,
+            TITLE_CHANGES,
+            "{} {} will be created{}{} {} will be {op_type_sim_past}",
+            num_dir_creations.to_string().blue(),
             if num_dir_creations == 1 { "dir" } else { "dirs" },
-            if num_file_moves == 1 { "file" } else { "files" },
+            if verbose { '\n' } else { ' ' },
+            num_file_moves.to_string().blue(),
+            if num_file_moves == 1 { "file" } else { "files" }
         );
 
         if !assume_yes && !dry_run {
-            let ok = input_confirmation_loop("continue");
-
+            if !verbose {
+                println!();
+            }
+            let ok = confirm_input("continue");
             if !ok {
-                println!("exiting...");
-                exit(0);
+                successfull_early_exit();
             }
         }
 
@@ -384,17 +389,18 @@ fn main() {
             print_verbose!(
                 verbose,
                 TITLE_DELETIONS,
-                "{} {} will be deleted\n",
+                "{} {} will be deleted",
                 num_dir_deletions.to_string().blue(),
                 if num_dir_deletions == 1 { "dir" } else { "dirs" }
             );
 
             if !assume_yes && !dry_run {
-                let ok = input_confirmation_loop("continue");
-
+                if !verbose {
+                    println!();
+                }
+                let ok = confirm_input("continue");
                 if !ok {
-                    println!("exiting...");
-                    exit(0);
+                    successfull_early_exit();
                 }
             }
 
@@ -749,7 +755,7 @@ fn main() {
 //    }
 //}
 
-fn input_confirmation_loop(str: &str) -> bool {
+fn confirm_input(str: &str) -> bool {
     loop {
         print!("{str} [y/N]?");
         let mut input = String::with_capacity(2);
@@ -771,4 +777,9 @@ fn input_confirmation_loop(str: &str) -> bool {
             }
         }
     }
+}
+
+fn successfull_early_exit() {
+    println!("exiting...");
+    std::process::exit(0);
 }
