@@ -9,7 +9,9 @@ pub struct Checks<'a> {
 
 impl<'a> From<&'a MusicIndex> for Checks<'a> {
     fn from(index: &'a MusicIndex) -> Self {
-        Self { index, song_operations: Vec::new(), artists: Vec::new() }
+        let mut new = Self { index, song_operations: Vec::new(), artists: Vec::new() };
+        new.update_index();
+        new
     }
 }
 
@@ -45,93 +47,74 @@ impl<'a> Checks<'a> {
         }
     }
 
-    fn update_song_op(&mut self, song: &'a Song, f: impl FnOnce(&mut SongOperation)) {
-        match self.song_operations.iter_mut().find(|f| f.song == song) {
-            Some(o) => f(o),
-            None => {
-                let mut o = SongOperation { song, tag_update: None, new_path: None };
-
-                f(&mut o);
-
-                self.song_operations.push(o);
-            }
-        }
-    }
-
-    fn update_tag(&mut self, song: &'a Song, f: impl FnOnce(&mut TagUpdate)) {
-        self.update_song_op(song, |op| match &mut op.tag_update {
-            Some(t) => f(t),
-            None => {
-                let mut t = TagUpdate::default();
-
-                f(&mut t);
-
-                op.tag_update = Some(t);
-            }
-        });
-    }
-
     pub fn remove_embedded_artworks(&mut self) {
-        for s in self.index.songs.iter() {
-            if s.has_artwork {
-                self.update_tag(s, |t| t.artwork = Value::Remove);
+        for song in self.index.songs.iter() {
+            if song.has_artwork {
+                update_tag(&mut self.song_operations, song, |t| t.artwork = Value::Remove);
             }
         }
     }
 
-    //pub fn check_inconsitent_release_artists(
-    //    &mut self,
-    //    f: fn(&MusicIndex, &ReleaseArtists, &ReleaseArtists) -> Value<Vec<String>>,
-    //) {
-    //    let mut offset = 1;
-    //    for ar1 in self.index.artists.iter() {
-    //        for ar2 in index.artists.iter().skip(offset) {
-    //            for (n1, n2) in ar1.names.iter().zip(ar2.names.iter()) {
-    //                if !n1.eq_ignore_ascii_case(n2) {
-    //                    continue;
-    //                }
-    //            }
-    //            match f(index, ar1, ar2) {
-    //                Value::Update(names) => {
-    //                    if ar1.names != names {
-    //                        for rl in ar1.releases.iter() {
-    //                            for song in rl.songs.iter().map(|&si| &index.songs[si]) {
-    //                                self.update_tag(&song.path, |tu| {
-    //                                    tu.album_artists = Value::Update(names)
-    //                                });
-    //                            }
-    //                        }
-    //                    }
+    pub fn check_inconsitent_release_artists(
+        &mut self,
+        f: fn(&ReleaseArtists, &ReleaseArtists) -> Value<Vec<String>>,
+    ) {
+        let mut offset = 1;
+        for ar1 in self.artists.iter() {
+            'ar2: for ar2 in self.artists.iter().skip(offset) {
+                if ar1.names.len() != ar2.names.len() {
+                    continue;
+                }
+                for (n1, n2) in ar1.names.iter().zip(ar2.names.iter()) {
+                    if !n1.eq_ignore_ascii_case(n2) {
+                        continue 'ar2;
+                    }
+                }
+                match f(ar1, ar2) {
+                    Value::Update(names) => {
+                        if ar1.names != names {
+                            for rl in ar1.releases.iter() {
+                                for song in rl.songs.iter() {
+                                    update_tag(&mut self.song_operations, song, |tu| {
+                                        tu.release_artists = Value::Update(names.clone())
+                                    });
+                                }
+                            }
+                        }
 
-    //                    if ar2.names != names {
-    //                        for rl in ar2.releases.iter() {
-    //                            for song in rl.songs.iter().map(|&si| &index.songs[si]) {
-    //                                self.update_tag(&song.path, |tu| {
-    //                                    tu.album_artists = Value::Update(names)
-    //                                });
-    //                            }
-    //                        }
-    //                    }
-    //                }
-    //                Value::Remove => {
-    //                    for rl in ar1.releases.iter() {
-    //                        for song in rl.songs.iter().map(|&si| &index.songs[si]) {
-    //                            self.update_tag(&song.path, |tu| tu.album_artists = Value::Remove);
-    //                        }
-    //                    }
+                        if ar2.names != names {
+                            for rl in ar2.releases.iter() {
+                                for song in rl.songs.iter() {
+                                    update_tag(&mut self.song_operations, song, |tu| {
+                                        tu.release_artists = Value::Update(names.clone())
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    Value::Remove => {
+                        for rl in ar1.releases.iter() {
+                            for song in rl.songs.iter() {
+                                update_tag(&mut self.song_operations, song, |tu| {
+                                    tu.release_artists = Value::Remove
+                                });
+                            }
+                        }
 
-    //                    for rl in ar2.releases.iter() {
-    //                        for song in rl.songs.iter().map(|&si| &index.songs[si]) {
-    //                            self.update_tag(&song.path, |tu| tu.album_artists = Value::Remove);
-    //                        }
-    //                    }
-    //                }
-    //                Value::Unchanged => (),
-    //            }
-    //        }
-    //        offset += 1;
-    //    }
-    //}
+                        for rl in ar2.releases.iter() {
+                            for song in rl.songs.iter() {
+                                update_tag(&mut self.song_operations, song, |tu| {
+                                    tu.release_artists = Value::Remove
+                                });
+                            }
+                        }
+                    }
+                    Value::Unchanged => (),
+                }
+            }
+            offset += 1;
+        }
+    }
 
     //pub fn check_inconsitent_albums(
     //    &mut self,
@@ -254,4 +237,38 @@ impl<'a> Checks<'a> {
     //        }
     //    }
     //}
+}
+
+fn update_song_op<'a>(
+    song_operations: &mut Vec<SongOperation<'a>>,
+    song: &'a Song,
+    f: impl FnOnce(&mut SongOperation),
+) {
+    match song_operations.iter_mut().find(|f| f.song == song) {
+        Some(o) => f(o),
+        None => {
+            let mut o = SongOperation { song, tag_update: None, new_path: None };
+
+            f(&mut o);
+
+            song_operations.push(o);
+        }
+    }
+}
+
+fn update_tag<'a>(
+    song_operations: &mut Vec<SongOperation<'a>>,
+    song: &'a Song,
+    f: impl FnOnce(&mut TagUpdate),
+) {
+    update_song_op(song_operations, song, |op| match &mut op.tag_update {
+        Some(t) => f(t),
+        None => {
+            let mut t = TagUpdate::default();
+
+            f(&mut t);
+
+            op.tag_update = Some(t);
+        }
+    });
 }

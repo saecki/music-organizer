@@ -32,14 +32,37 @@ impl<T> Default for Value<T> {
     }
 }
 
-impl<T> Value<T> {
-    pub fn value(&self) -> Option<&T> {
+impl<T> Value<Vec<T>> {
+    pub fn slice_value(&self) -> Option<&[T]> {
         match self {
-            Self::Update(v) => Some(v),
-            _ => None,
+            Self::Update(v) => Some(v.as_slice()),
+            Self::Remove => Some(&[]),
+            Self::Unchanged => None,
         }
     }
+}
 
+impl Value<String> {
+    pub fn str_value(&self) -> Option<&str> {
+        match self {
+            Self::Update(s) => Some(s.as_str()),
+            Self::Remove => Some(""),
+            Self::Unchanged => None,
+        }
+    }
+}
+
+impl Value<u16> {
+    pub fn num_value(&self) -> Option<u16> {
+        match self {
+            Self::Update(n) => Some(*n),
+            Self::Remove => Some(0),
+            Self::Unchanged => None,
+        }
+    }
+}
+
+impl<T> Value<T> {
     pub fn is_update(&self) -> bool {
         matches!(self, Self::Update(_))
     }

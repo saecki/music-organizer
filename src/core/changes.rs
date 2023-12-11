@@ -65,15 +65,41 @@ impl<'a> Changes<'a> {
         }
 
         for song in self.index.songs.iter() {
-            let release_artists = valid_os_str_dots(&song.release_artists_str());
-            let release = valid_os_str_dots(&song.release);
+            let op = self.song_operations.iter_mut().find(|o| o.song == song);
+            let tag_update = op.and_then(|op| op.tag_update.as_ref());
 
-            let artists = valid_os_str(&song.artists_str());
-            let title = valid_os_str(&song.title);
+            let release_artists = tag_update
+                .and_then(|t| t.release_artists.slice_value())
+                .unwrap_or(song.release_artists.as_slice())
+                .join(", ");
+            let release_artists = valid_os_str_dots(&release_artists);
+
+            let release = tag_update.and_then(|t| t.release.str_value()).unwrap_or(&song.release);
+            let release = valid_os_str_dots(release);
+
+            let artists = tag_update
+                .and_then(|t| t.artists.slice_value())
+                .unwrap_or(song.artists.as_slice())
+                .join(", ");
+            let artists = valid_os_str(&artists);
+
+            let title = tag_update.and_then(|t| t.title.str_value()).unwrap_or(&song.title);
+            let title = valid_os_str(&title);
+
             let extension = song.path.extension().unwrap();
-            let disc = song.disc_number.unwrap_or(0);
-            let total_discs = song.total_discs.unwrap_or(0);
-            let track = song.track_number.unwrap_or(0);
+
+            let disc = tag_update
+                .and_then(|t| t.disc_number.num_value())
+                .or(song.disc_number)
+                .unwrap_or(0);
+            let total_discs = tag_update
+                .and_then(|t| t.total_discs.num_value())
+                .or(song.total_discs)
+                .unwrap_or(0);
+            let track = tag_update
+                .and_then(|t| t.track_number.num_value())
+                .or(song.track_number)
+                .unwrap_or(0);
 
             let mut path = output_dir.join(release_artists);
             self.dir_creation(&path);

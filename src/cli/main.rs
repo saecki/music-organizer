@@ -1,6 +1,7 @@
 use colored::Colorize;
-use music_organizer::{Changes, Checks, Cleanup, FileOpType, MusicIndex};
-use std::io::Write;
+use music_organizer::{Changes, Checks, Cleanup, FileOpType, MusicIndex, ReleaseArtists, Value};
+use std::fmt::Write as _;
+use std::io::Write as _;
 
 use crate::args::Args;
 use crate::display::strip_dir;
@@ -161,7 +162,7 @@ fn display_checking(checks: &mut Checks, args: &Args) {
         checks.remove_embedded_artworks();
     }
 
-    //changes.check_inconsitent_release_artists(inconsitent_artists_dialog);
+    checks.check_inconsitent_release_artists(inconsitent_artists_dialog);
     //changes.check_inconsitent_albums(inconsitent_albums_dialog);
     //changes.check_inconsitent_total_tracks(inconsitent_total_tracks_dialog);
     //changes.check_inconsitent_total_discs(inconsitent_total_discs_dialog);
@@ -484,76 +485,84 @@ fn display_cleaning(cleanup: &Cleanup, args: &Args) {
     }
 }
 
-//fn inconsitent_artists_dialog(
-//    index: &MusicIndex,
-//    a: &ReleaseArtists,
-//    b: &ReleaseArtists,
-//) -> Option<String> {
-//    fn print(index: &MusicIndex, artist: &ReleaseArtists) {
-//        println!("{}:", artist.name.as_str().yellow());
-//        for (i, al) in artist.releases.iter().enumerate() {
-//            if i == 10 {
-//                println!("   {}", "...".green());
-//                break;
-//            }
-//            println!("   {}:", al.name);
-//            for (j, s) in al.songs.iter().map(|&si| &index.songs[si]).enumerate() {
-//                if i >= 4 || j == 3 {
-//                    println!("      {}", "...".green());
-//                    break;
-//                } else {
-//                    println!(
-//                        "      {:02} - {} - {}",
-//                        s.track_number.unwrap_or(0),
-//                        s.artist.opt_str(),
-//                        s.title.opt_str()
-//                    );
-//                }
-//            }
-//        }
-//    }
-//    println!("These two artists are named similarly:");
-//    print(index, a);
-//    println!();
-//    print(index, b);
-//    println!();
-//
-//    let index = input_options_loop(
-//        "",
-//        &[
-//            "don't do anything",
-//            "rename first to second",
-//            "rename second to first",
-//            "enter new name",
-//        ],
-//    );
-//
-//    match index {
-//        0 => return None,
-//        1 => {
-//            println!("renaming first to second");
-//            return Some(a.name.clone());
-//        }
-//        2 => {
-//            println!("renaming second to first");
-//            return Some(b.name.clone());
-//        }
-//        3 => loop {
-//            let new_name = input_loop("enter new name:", |_| true);
-//            let msg = format!("new name: '{}'", new_name);
-//
-//            let i = input_options_loop(&msg, &["ok", "reenter name", "dismiss"]);
-//
-//            match i {
-//                0 => return Some(new_name),
-//                1 => continue,
-//                _ => return None,
-//            }
-//        },
-//        _ => unreachable!(),
-//    }
-//}
-//
+fn inconsitent_artists_dialog(a: &ReleaseArtists, b: &ReleaseArtists) -> Value<Vec<String>> {
+    fn print(artist: &ReleaseArtists) {
+        for n in artist.names {
+            println!(" {}", n.yellow().on_black());
+        }
+        println!();
+        for (i, al) in artist.releases.iter().enumerate() {
+            if i == 10 {
+                println!("   {}", "...".green());
+                break;
+            }
+            println!("   {}:", al.name);
+            for (j, s) in al.songs.iter().enumerate() {
+                if i >= 4 || j == 3 {
+                    println!("      {}", "...".green());
+                    break;
+                } else {
+                    println!(
+                        "      {:02} - {} - {}",
+                        artist.names.join(", "),
+                        s.track_number.unwrap_or(0),
+                        s.title
+                    );
+                }
+            }
+        }
+    }
+    println!("\nThese two artists are named similarly:");
+    print(a);
+    println!();
+    print(b);
+    println!();
+
+    let index = options_input(
+        "",
+        &[
+            "don't do anything",
+            "rename first to second",
+            "rename second to first",
+            "enter new name[s]",
+        ],
+    );
+
+    match index {
+        0 => return Value::Unchanged,
+        1 => {
+            println!("renaming first to second");
+            return Value::Update(b.names.to_vec());
+        }
+        2 => {
+            println!("renaming second to first");
+            return Value::Update(a.names.to_vec());
+        }
+        3 => {
+            let mut new_names = Vec::new();
+            loop {
+                new_names.push(string_input("enter new name:"));
+                let mut msg = String::from("new name[s]:");
+                for n in new_names.iter() {
+                    _ = write!(msg, " {}", n.green().on_black());
+                }
+
+                let i = options_input(&msg, &["ok", "reenter name", "add another", "dismiss"]);
+                match i {
+                    0 => return Value::Update(new_names),
+                    1 => {
+                        new_names.pop();
+                        continue;
+                    }
+                    2 => continue,
+                    _ => return Value::Unchanged,
+                }
+            }
+        }
+        _ => unreachable!(),
+    }
+}
+
 //fn inconsitent_albums_dialog(
 //    index: &MusicIndex,
 //    artist: &ReleaseArtists,
@@ -749,58 +758,56 @@ fn display_cleaning(cleanup: &Cleanup, args: &Args) {
 //    }
 //}
 
-//fn input_loop(str: &str, predicate: fn(&str) -> bool) -> String {
-//    loop {
-//        println!("{}", str);
-//        let mut input = String::new();
-//
-//        match std::io::stdin().read_line(&mut input) {
-//            Ok(_) => {
-//                input.pop();
-//                if predicate(&input) {
-//                    return input;
-//                }
-//            }
-//            Err(e) => println!("error:\n {}", e),
-//        }
-//    }
-//}
-//
+fn string_input(str: &str) -> String {
+    loop {
+        println!("{}", str);
+        let mut input = String::new();
+
+        match std::io::stdin().read_line(&mut input) {
+            Ok(_) => {
+                input.pop();
+                return input;
+            }
+            Err(e) => println!("error:\n {}", e),
+        }
+    }
+}
+
 //fn input_loop_parse<T: FromStr + Default>(str: &str) -> T {
 //    input_loop(str, |v| v.parse::<T>().is_ok()).parse::<T>().unwrap_or_else(|_| unreachable!())
 //    // Can't use unwrap because FromStr::Err does not neccesarily implement Debug
 //}
-//
-//fn input_options_loop(str: &str, options: &[&str]) -> usize {
-//    loop {
-//        if !str.is_empty() {
-//            println!("{}", str);
-//        }
-//        let mut input = String::with_capacity(2);
-//
-//        for (i, s) in options.iter().enumerate() {
-//            if options.len() < 10 {
-//                println!("[{}] {}", i, s.replace("\n", "\n    "));
-//            } else {
-//                println!("[{:02}] {}", i, s.replace("\n", "\n     "));
-//            }
-//        }
-//
-//        match std::io::stdin().read_line(&mut input) {
-//            Ok(_) => match usize::from_str(input.trim_matches('\n')) {
-//                Ok(i) => {
-//                    if i < options.len() {
-//                        return i;
-//                    } else {
-//                        println!("invalid input")
-//                    }
-//                }
-//                Err(_) => println!("invalid input"),
-//            },
-//            Err(e) => println!("error:\n {}", e),
-//        }
-//    }
-//}
+
+fn options_input(str: &str, options: &[&str]) -> usize {
+    loop {
+        if !str.is_empty() {
+            println!("{}", str);
+        }
+        let mut input = String::with_capacity(2);
+
+        for (i, s) in options.iter().enumerate() {
+            if options.len() < 10 {
+                println!("[{}] {}", i, s.replace("\n", "\n    "));
+            } else {
+                println!("[{:02}] {}", i, s.replace("\n", "\n     "));
+            }
+        }
+
+        match std::io::stdin().read_line(&mut input) {
+            Ok(_) => match input.trim_matches('\n').parse::<usize>() {
+                Ok(i) => {
+                    if i < options.len() {
+                        return i;
+                    } else {
+                        println!("invalid input")
+                    }
+                }
+                Err(_) => println!("invalid input"),
+            },
+            Err(e) => println!("error:\n {}", e),
+        }
+    }
+}
 
 fn confirm_input(str: &str) -> bool {
     loop {

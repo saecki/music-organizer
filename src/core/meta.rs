@@ -28,16 +28,6 @@ pub struct Song {
     pub has_artwork: bool,
 }
 
-impl Song {
-    pub fn artists_str(&self) -> String {
-        self.artists.join(", ")
-    }
-
-    pub fn release_artists_str(&self) -> String {
-        self.release_artists.join(", ")
-    }
-}
-
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Metadata {
     pub track_number: Option<u16>,
