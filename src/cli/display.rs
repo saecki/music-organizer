@@ -34,6 +34,7 @@ impl Display for FileOp<'_> {
     }
 }
 
+/// TODO: proper mode formatting
 fn format_song_op(
     f: &mut impl fmt::Write,
     music_dir: &Path,
@@ -43,6 +44,9 @@ fn format_song_op(
     rename_str: &str,
     verbosity: u8,
 ) -> fmt::Result {
+    if song_op.mode_update.is_some() {
+        print!("mode");
+    }
     match (&song_op.new_path, &song_op.tag_update) {
         (Some(new_path), Some(tag_update)) => {
             format_file_op(
@@ -109,6 +113,7 @@ fn format_file_op(
     Ok(())
 }
 
+/// TODO: prettier tag update
 fn format_tag_update(
     f: &mut impl fmt::Write,
     s: &Song,

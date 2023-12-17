@@ -162,6 +162,10 @@ fn display_checking(checks: &mut Checks, args: &Args) {
         checks.remove_embedded_artworks();
     }
 
+    print_verbose!(verbose, TITLE_CHECKING, "{}", "file permissions".yellow());
+    checks.check_file_permissions();
+
+    print_verbose!(verbose, TITLE_CHECKING, "{}", "inconsistent artists".yellow());
     checks.check_inconsitent_release_artists(inconsitent_artists_dialog);
     //changes.check_inconsitent_albums(inconsitent_albums_dialog);
     //changes.check_inconsitent_total_tracks(inconsitent_total_tracks_dialog);
@@ -262,7 +266,7 @@ fn display_writing(changes: &Changes, args: &Args, dict: &Dict) {
     print_title_verbose(verbose, TITLE_WRITING);
 
     let mut dir_creation_idx = 1;
-    changes.dir_creations(&mut |d, r| {
+    changes.execute_dir_creations(&mut |d, r| {
         match r {
             Ok(_) => {
                 print_verbose!(
@@ -290,7 +294,7 @@ fn display_writing(changes: &Changes, args: &Args, dict: &Dict) {
     });
 
     let mut file_operation_idx = 1;
-    changes.song_operations(args.op_type, &mut |o, r| {
+    changes.execute_song_operations(args.op_type, &mut |o, r| {
         match r {
             Ok(_) => {
                 let display_obj = display::SongOp(
@@ -330,7 +334,7 @@ fn display_writing(changes: &Changes, args: &Args, dict: &Dict) {
         file_operation_idx += 1;
     });
 
-    changes.file_operations(args.op_type, &mut |f, r| {
+    changes.execute_file_operations(args.op_type, &mut |f, r| {
         match r {
             Ok(_) => {
                 let display_obj = display::FileOp(

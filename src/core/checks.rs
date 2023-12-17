@@ -1,4 +1,4 @@
-use crate::{MusicIndex, Release, ReleaseArtists, Song, SongOperation, TagUpdate, Value};
+use crate::{util, MusicIndex, Release, ReleaseArtists, SongOperation, Value};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Checks<'a> {
@@ -50,7 +50,19 @@ impl<'a> Checks<'a> {
     pub fn remove_embedded_artworks(&mut self) {
         for song in self.index.songs.iter() {
             if song.has_artwork {
-                update_tag(&mut self.song_operations, song, |t| t.artwork = Value::Remove);
+                util::update_tag(&mut self.song_operations, song, |t| t.artwork = Value::Remove);
+            }
+        }
+    }
+
+    pub fn check_file_permissions(&mut self) {
+        for song in self.index.songs.iter() {
+            if let Some(mode) = song.mode {
+                if mode.permissions() != 0o755 {
+                    util::update_song_op(&mut self.song_operations, song, |op| {
+                        op.mode_update = Some(mode.with_permissions(0o755));
+                    });
+                }
             }
         }
     }
@@ -75,7 +87,7 @@ impl<'a> Checks<'a> {
                         if ar1.names != names {
                             for rl in ar1.releases.iter() {
                                 for song in rl.songs.iter() {
-                                    update_tag(&mut self.song_operations, song, |tu| {
+                                    util::update_tag(&mut self.song_operations, song, |tu| {
                                         tu.release_artists = Value::Update(names.clone())
                                     });
                                 }
@@ -85,7 +97,7 @@ impl<'a> Checks<'a> {
                         if ar2.names != names {
                             for rl in ar2.releases.iter() {
                                 for song in rl.songs.iter() {
-                                    update_tag(&mut self.song_operations, song, |tu| {
+                                    util::update_tag(&mut self.song_operations, song, |tu| {
                                         tu.release_artists = Value::Update(names.clone())
                                     });
                                 }
@@ -95,7 +107,7 @@ impl<'a> Checks<'a> {
                     Value::Remove => {
                         for rl in ar1.releases.iter() {
                             for song in rl.songs.iter() {
-                                update_tag(&mut self.song_operations, song, |tu| {
+                                util::update_tag(&mut self.song_operations, song, |tu| {
                                     tu.release_artists = Value::Remove
                                 });
                             }
@@ -103,7 +115,7 @@ impl<'a> Checks<'a> {
 
                         for rl in ar2.releases.iter() {
                             for song in rl.songs.iter() {
-                                update_tag(&mut self.song_operations, song, |tu| {
+                                util::update_tag(&mut self.song_operations, song, |tu| {
                                     tu.release_artists = Value::Remove
                                 });
                             }
@@ -237,38 +249,4 @@ impl<'a> Checks<'a> {
     //        }
     //    }
     //}
-}
-
-fn update_song_op<'a>(
-    song_operations: &mut Vec<SongOperation<'a>>,
-    song: &'a Song,
-    f: impl FnOnce(&mut SongOperation),
-) {
-    match song_operations.iter_mut().find(|f| f.song == song) {
-        Some(o) => f(o),
-        None => {
-            let mut o = SongOperation { song, tag_update: None, new_path: None };
-
-            f(&mut o);
-
-            song_operations.push(o);
-        }
-    }
-}
-
-fn update_tag<'a>(
-    song_operations: &mut Vec<SongOperation<'a>>,
-    song: &'a Song,
-    f: impl FnOnce(&mut TagUpdate),
-) {
-    update_song_op(song_operations, song, |op| match &mut op.tag_update {
-        Some(t) => f(t),
-        None => {
-            let mut t = TagUpdate::default();
-
-            f(&mut t);
-
-            op.tag_update = Some(t);
-        }
-    });
 }

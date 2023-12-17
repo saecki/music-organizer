@@ -1,3 +1,6 @@
+use std::error::Error;
+use std::fmt::Write;
+use std::fs::{File, Permissions};
 use std::path::{Path, PathBuf};
 
 use id3::TagLike;
@@ -17,6 +20,7 @@ pub struct Release<'a> {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Song {
     pub path: PathBuf,
+    pub mode: Option<Mode>,
     pub track_number: Option<u16>,
     pub total_tracks: Option<u16>,
     pub disc_number: Option<u16>,
@@ -30,6 +34,7 @@ pub struct Song {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Metadata {
+    pub mode: Option<Mode>,
     pub track_number: Option<u16>,
     pub total_tracks: Option<u16>,
     pub disc_number: Option<u16>,
@@ -43,19 +48,20 @@ pub struct Metadata {
 
 impl Metadata {
     pub fn read_from(path: &Path) -> Self {
+        let Ok(mut file) = File::open(path) else { return Self::default() };
         match path.extension().unwrap().to_str().unwrap() {
             "mp3" => {
-                if let Some(meta) = Self::read_mp3(path) {
+                if let Some(meta) = Self::read_mp3(&file) {
                     return meta;
                 }
             }
             "m4a" => {
-                if let Some(meta) = Self::read_mp4(path) {
+                if let Some(meta) = Self::read_mp4(&mut file) {
                     return meta;
                 }
             }
             "flac" => {
-                if let Some(meta) = Self::read_flac(path) {
+                if let Some(meta) = Self::read_flac(&mut file) {
                     return meta;
                 }
             }
@@ -65,10 +71,11 @@ impl Metadata {
         Self::default()
     }
 
-    fn read_mp3(path: &Path) -> Option<Self> {
-        let tag = id3::Tag::read_from_path(path).ok()?;
+    fn read_mp3(file: &File) -> Option<Self> {
+        let tag = id3::Tag::read_from(file).ok()?;
 
         Some(Self {
+            mode: Mode::read(file),
             track_number: zero_none(tag.track().map(|u| u as u16)),
             total_tracks: zero_none(tag.total_tracks().map(|u| u as u16)),
             disc_number: zero_none(tag.disc().map(|u| u as u16)),
@@ -87,9 +94,10 @@ impl Metadata {
         })
     }
 
-    fn read_mp4(path: &Path) -> Option<Self> {
-        let mut tag = mp4ameta::Tag::read_from_path(path).ok()?;
+    fn read_mp4(file: &mut File) -> Option<Self> {
+        let mut tag = mp4ameta::Tag::read_from(file).ok()?;
         Some(Self {
+            mode: Mode::read(file),
             track_number: tag.track_number(),
             total_tracks: tag.total_tracks(),
             disc_number: tag.disc_number(),
@@ -102,11 +110,12 @@ impl Metadata {
         })
     }
 
-    fn read_flac(path: &Path) -> Option<Self> {
-        let tag = metaflac::Tag::read_from_path(path).ok()?;
+    fn read_flac(file: &mut File) -> Option<Self> {
+        let tag = metaflac::Tag::read_from(file).ok()?;
         let vorbis = tag.vorbis_comments()?;
 
         Some(Self {
+            mode: Mode::read(file),
             track_number: zero_none(vorbis.track().map(|u| u as u16)),
             total_tracks: zero_none(vorbis.total_tracks().map(|u| u as u16)),
             disc_number: zero_none(vorbis.get("DISCNUMBER").and_then(|d| d[0].parse().ok())),
@@ -137,6 +146,64 @@ impl Metadata {
         } else {
             None
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Mode(pub u32);
+
+impl std::fmt::Display for Mode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn write_char_or_dash(
+            f: &mut std::fmt::Formatter<'_>,
+            val: u32,
+            char: char,
+        ) -> std::fmt::Result {
+            if val == 0 {
+                f.write_char('-')
+            } else {
+                f.write_char(char)
+            }
+        }
+        fn write_permissions(
+            f: &mut std::fmt::Formatter<'_>,
+            mode: u32,
+            offset: u32,
+        ) -> std::fmt::Result {
+            write_char_or_dash(f, mode & (0o4 << offset), 'r')?;
+            write_char_or_dash(f, mode & (0o2 << offset), 'w')?;
+            write_char_or_dash(f, mode & (0o1 << offset), 'x')?;
+            Ok(())
+        }
+        write_permissions(f, self.0, 6)?;
+        write_permissions(f, self.0, 3)?;
+        write_permissions(f, self.0, 0)?;
+        Ok(())
+    }
+}
+
+impl Mode {
+    pub fn read(file: &File) -> Option<Mode> {
+        use std::os::unix::fs::MetadataExt;
+
+        let meta = file.metadata().ok()?;
+        Some(Mode(meta.mode()))
+    }
+
+    pub fn write(&self, path: &Path) -> Result<(), Box<dyn Error>> {
+        use std::os::unix::fs::PermissionsExt;
+
+        let file = File::open(path)?;
+        file.set_permissions(Permissions::from_mode(self.0))?;
+        Ok(())
+    }
+
+    pub fn permissions(&self) -> u32 {
+        self.0 & 0o777
+    }
+
+    pub fn with_permissions(&self, permissions: u32) -> Self {
+        Self((self.0 & !0o777) | (permissions & 0o777))
     }
 }
 

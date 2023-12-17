@@ -65,39 +65,28 @@ impl MusicIndexBuilder {
     }
 
     fn add_song(&mut self, p: PathBuf, m: Metadata) {
-        let release_artists = match m.release_artists() {
-            Some(a) => a,
-            None => {
-                let _ = self.item_sender.send(Item::Unknown(p));
-                return;
-            }
+        let Some(release_artists) = m.release_artists() else {
+            let _ = self.item_sender.send(Item::Unknown(p));
+            return;
         };
 
-        let song_artists = match m.song_artists() {
-            Some(a) => a,
-            None => {
-                let _ = self.item_sender.send(Item::Unknown(p));
-                return;
-            }
+        let Some(song_artists) = m.song_artists() else {
+            let _ = self.item_sender.send(Item::Unknown(p));
+            return;
         };
 
-        let release = match &m.release {
-            Some(rl) => rl,
-            None => {
-                let _ = self.item_sender.send(Item::Unknown(p));
-                return;
-            }
+        let Some(release) = &m.release else {
+            let _ = self.item_sender.send(Item::Unknown(p));
+            return;
         };
 
-        let title = match &m.title {
-            Some(t) => t,
-            None => {
-                let _ = self.item_sender.send(Item::Unknown(p));
-                return;
-            }
+        let Some(title) = &m.title else {
+            let _ = self.item_sender.send(Item::Unknown(p));
+            return;
         };
 
         let _ = self.item_sender.send(Item::Song(Song {
+            mode: m.mode,
             track_number: m.track_number,
             total_tracks: m.total_tracks,
             disc_number: m.disc_number,

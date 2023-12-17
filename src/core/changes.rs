@@ -3,7 +3,9 @@ use std::path::Path;
 use std::{error, io};
 
 use crate::fs::{valid_os_str, valid_os_str_dots};
-use crate::{Checks, DirCreation, FileOpType, FileOperation, MusicIndex, Song, SongOperation};
+use crate::{
+    util, Checks, DirCreation, FileOpType, FileOperation, MusicIndex, Song, SongOperation,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Changes<'a> {
@@ -35,19 +37,6 @@ impl<'a> Changes<'a> {
         }
 
         &song.path
-    }
-
-    fn update_song_op(&mut self, song: &'a Song, f: impl FnOnce(&mut SongOperation)) {
-        match self.song_operations.iter_mut().find(|o| o.song == song) {
-            Some(o) => f(o),
-            None => {
-                let mut o = SongOperation { song, tag_update: None, new_path: None };
-
-                f(&mut o);
-
-                self.song_operations.push(o);
-            }
-        }
     }
 
     fn dir_creation(&mut self, path: &Path) -> bool {
@@ -122,7 +111,9 @@ impl<'a> Changes<'a> {
             path.push(file_name);
 
             if path != song.path {
-                self.update_song_op(song, |fo| fo.new_path = Some(path))
+                util::update_song_op(&mut self.song_operations, song, |fo| {
+                    fo.new_path = Some(path)
+                });
             }
         }
 
@@ -171,14 +162,14 @@ impl<'a> Changes<'a> {
         }
     }
 
-    pub fn dir_creations(&self, f: &mut impl FnMut(&DirCreation, io::Result<()>)) {
+    pub fn execute_dir_creations(&self, f: &mut impl FnMut(&DirCreation, io::Result<()>)) {
         for d in self.dir_creations.iter() {
             let r = d.execute();
             f(d, r);
         }
     }
 
-    pub fn song_operations(
+    pub fn execute_song_operations(
         &self,
         op_type: FileOpType,
         f: &mut impl FnMut(&SongOperation, Result<(), Box<dyn error::Error>>),
@@ -189,7 +180,7 @@ impl<'a> Changes<'a> {
         }
     }
 
-    pub fn file_operations(
+    pub fn execute_file_operations(
         &self,
         op_type: FileOpType,
         f: &mut impl FnMut(&FileOperation, Result<(), Box<dyn error::Error>>),

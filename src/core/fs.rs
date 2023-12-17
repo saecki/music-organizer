@@ -6,6 +6,7 @@ use std::{error, path::Path};
 
 use regex::Regex;
 
+use crate::meta::Mode;
 use crate::update::TagUpdate;
 use crate::Song;
 
@@ -35,27 +36,37 @@ impl DirDeletion {
 pub struct SongOperation<'a> {
     pub song: &'a Song,
     pub tag_update: Option<TagUpdate>,
+    pub mode_update: Option<Mode>,
     pub new_path: Option<PathBuf>,
 }
 
-impl SongOperation<'_> {
+impl<'a> SongOperation<'a> {
+    pub fn new(song: &'a Song) -> Self {
+        Self { song, mode_update: None, tag_update: None, new_path: None }
+    }
+
     pub fn execute(&self, op_type: FileOpType) -> Result<(), Box<dyn error::Error>> {
-        if let Some(new) = &self.new_path {
-            match op_type {
-                FileOpType::Copy => {
-                    fs::copy(&self.song.path, new)?;
+        let path = match &self.new_path {
+            Some(new) => {
+                match op_type {
+                    FileOpType::Copy => {
+                        fs::copy(&self.song.path, new)?;
+                    }
+                    FileOpType::Move => {
+                        fs::rename(&self.song.path, new)?;
+                    }
                 }
-                FileOpType::Move => {
-                    fs::rename(&self.song.path, new)?;
-                }
-            };
-        }
+                new
+            }
+            None => &self.song.path,
+        };
 
         if let Some(u) = &self.tag_update {
-            match &self.new_path {
-                Some(n) => u.execute(n)?,
-                None => u.execute(&self.song.path)?,
-            }
+            u.execute(path)?;
+        }
+
+        if let Some(mode) = &self.mode_update {
+            mode.write(path)?;
         }
 
         Ok(())
