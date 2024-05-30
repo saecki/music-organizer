@@ -1,4 +1,4 @@
-use std::{error, path::Path};
+use std::path::Path;
 
 use id3::frame::Picture;
 use id3::frame::PictureType as Id3PictureType;
@@ -77,7 +77,7 @@ impl<T> Value<T> {
 }
 
 impl TagUpdate {
-    pub fn execute(&self, path: &Path) -> Result<(), Box<dyn error::Error>> {
+    pub fn execute(&self, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
         match path.extension().unwrap().to_str().unwrap() {
             "mp3" => self.write_mp3(path)?,
             "m4a" => self.write_mp4(path)?,
@@ -88,7 +88,7 @@ impl TagUpdate {
         Ok(())
     }
 
-    fn write_mp3(&self, path: &Path) -> Result<(), Box<dyn error::Error>> {
+    fn write_mp3(&self, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
         let tag = match id3::Tag::read_from_path(path) {
             Ok(mut tag) => {
                 match &self.release_artists {
@@ -155,7 +155,7 @@ impl TagUpdate {
         Ok(())
     }
 
-    fn write_mp4(&self, path: &Path) -> Result<(), Box<dyn error::Error>> {
+    fn write_mp4(&self, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
         let tag = match mp4ameta::Tag::read_from_path(path) {
             Ok(mut tag) => {
                 match &self.release_artists {
@@ -214,7 +214,7 @@ impl TagUpdate {
         Ok(())
     }
 
-    fn write_flac(&self, path: &Path) -> Result<(), Box<dyn error::Error>> {
+    fn write_flac(&self, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
         let mut tag = match metaflac::Tag::read_from_path(path) {
             Ok(mut tag) => {
                 let vorbis = tag.vorbis_comments_mut();

@@ -1,8 +1,6 @@
 use std::ffi::OsStr;
-use std::fs;
-use std::io;
+use std::path::Path;
 use std::path::PathBuf;
-use std::{error, path::Path};
 
 use regex::Regex;
 
@@ -16,7 +14,7 @@ pub struct DirCreation {
 }
 
 impl DirCreation {
-    pub fn execute(&self) -> Result<(), io::Error> {
+    pub fn execute(&self) -> Result<(), std::io::Error> {
         std::fs::create_dir(&self.path)
     }
 }
@@ -27,7 +25,7 @@ pub struct DirDeletion {
 }
 
 impl DirDeletion {
-    pub fn execute(&self) -> Result<(), io::Error> {
+    pub fn execute(&self) -> Result<(), std::io::Error> {
         std::fs::remove_dir(&self.path)
     }
 }
@@ -45,15 +43,15 @@ impl<'a> SongOperation<'a> {
         Self { song, mode_update: None, tag_update: None, new_path: None }
     }
 
-    pub fn execute(&self, op_type: FileOpType) -> Result<(), Box<dyn error::Error>> {
+    pub fn execute(&self, op_type: FileOpType) -> Result<(), Box<dyn std::error::Error>> {
         let path = match &self.new_path {
             Some(new) => {
                 match op_type {
                     FileOpType::Copy => {
-                        fs::copy(&self.song.path, new)?;
+                        std::fs::copy(&self.song.path, new)?;
                     }
                     FileOpType::Move => {
-                        fs::rename(&self.song.path, new)?;
+                        std::fs::rename(&self.song.path, new)?;
                     }
                 }
                 new
@@ -80,13 +78,13 @@ pub struct FileOperation<'a> {
 }
 
 impl FileOperation<'_> {
-    pub fn execute(&self, op_type: FileOpType) -> Result<(), Box<dyn error::Error>> {
+    pub fn execute(&self, op_type: FileOpType) -> Result<(), Box<dyn std::error::Error>> {
         match op_type {
             FileOpType::Copy => {
-                fs::copy(self.old_path, &self.new_path)?;
+                std::fs::copy(self.old_path, &self.new_path)?;
             }
             FileOpType::Move => {
-                fs::rename(self.old_path, &self.new_path)?;
+                std::fs::rename(self.old_path, &self.new_path)?;
             }
         };
         Ok(())

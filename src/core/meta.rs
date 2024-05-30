@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::fmt::Write;
 use std::fs::{File, Permissions};
 use std::path::{Path, PathBuf};
@@ -190,7 +189,7 @@ impl Mode {
         Some(Mode(meta.mode()))
     }
 
-    pub fn write(&self, path: &Path) -> Result<(), Box<dyn Error>> {
+    pub fn write(&self, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
         use std::os::unix::fs::PermissionsExt;
 
         let file = File::open(path)?;

@@ -1,6 +1,5 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use std::{fs, thread};
 
 use crossbeam_channel::{Receiver, Sender};
 
@@ -35,7 +34,7 @@ impl MusicIndexBuilder {
     }
 
     fn read(&mut self, dir: PathBuf) {
-        if let Ok(r) = fs::read_dir(dir) {
+        if let Ok(r) = std::fs::read_dir(dir) {
             for e in r.into_iter().filter_map(|e| e.ok()) {
                 let p = e.path();
 
@@ -113,7 +112,7 @@ impl MusicIndex {
                 dir_sender: dir_sender.clone(),
                 item_sender: item_sender.clone(),
             };
-            let t = thread::spawn(move || {
+            let t = std::thread::spawn(move || {
                 builder.start();
             });
             threads.push(t);

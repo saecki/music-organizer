@@ -1,6 +1,5 @@
 use std::ffi::OsString;
 use std::path::Path;
-use std::{error, io};
 
 use crate::fs::{valid_os_str, valid_os_str_dots};
 use crate::{
@@ -162,7 +161,7 @@ impl<'a> Changes<'a> {
         }
     }
 
-    pub fn execute_dir_creations(&self, f: &mut impl FnMut(&DirCreation, io::Result<()>)) {
+    pub fn execute_dir_creations(&self, f: &mut impl FnMut(&DirCreation, std::io::Result<()>)) {
         for d in self.dir_creations.iter() {
             let r = d.execute();
             f(d, r);
@@ -172,7 +171,7 @@ impl<'a> Changes<'a> {
     pub fn execute_song_operations(
         &self,
         op_type: FileOpType,
-        f: &mut impl FnMut(&SongOperation, Result<(), Box<dyn error::Error>>),
+        f: &mut impl FnMut(&SongOperation, Result<(), Box<dyn std::error::Error>>),
     ) {
         for o in self.song_operations.iter() {
             let r = o.execute(op_type);
@@ -183,7 +182,7 @@ impl<'a> Changes<'a> {
     pub fn execute_file_operations(
         &self,
         op_type: FileOpType,
-        f: &mut impl FnMut(&FileOperation, Result<(), Box<dyn error::Error>>),
+        f: &mut impl FnMut(&FileOperation, Result<(), Box<dyn std::error::Error>>),
     ) {
         for o in self.file_operations.iter() {
             let r = o.execute(op_type);

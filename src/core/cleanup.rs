@@ -1,4 +1,3 @@
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::fs::DirDeletion;
@@ -10,7 +9,7 @@ fn is_empty_dir(cleanup: &mut Cleanup, dir: &Path, f: &mut impl FnMut(&Path)) ->
 
     f(dir);
 
-    if let Ok(r) = fs::read_dir(dir) {
+    if let Ok(r) = std::fs::read_dir(dir) {
         let is_empty = r
             .into_iter()
             .filter_map(|e| e.ok())
@@ -43,7 +42,7 @@ impl Cleanup {
     pub fn check(&mut self, f: &mut impl FnMut(&Path)) {
         let dir = self.music_dir.to_owned();
 
-        if let Ok(r) = fs::read_dir(dir) {
+        if let Ok(r) = std::fs::read_dir(dir) {
             for e in r.into_iter().filter_map(|e| e.ok()) {
                 is_empty_dir(self, &e.path(), f);
             }
@@ -52,7 +51,7 @@ impl Cleanup {
 
     pub fn excecute(&self, f: &mut impl FnMut(&Path)) {
         for d in &self.dir_deletions {
-            fs::remove_dir(&d.path).ok();
+            std::fs::remove_dir(&d.path).ok();
             f(&d.path);
         }
     }

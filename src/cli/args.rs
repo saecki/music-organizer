@@ -3,7 +3,6 @@ use clap_complete::generate;
 use clap_complete::shells::{Bash, Elvish, Fish, PowerShell, Zsh};
 use music_organizer::FileOpType;
 use std::path::PathBuf;
-use std::process::exit;
 use std::str::FromStr;
 
 const BIN_NAME: &str = "music-organizer";
@@ -141,7 +140,7 @@ pub fn parse_args() -> Args {
             Shell::Zsh => generate(Zsh, &mut app, BIN_NAME, &mut stdout),
             Shell::Pwrsh => generate(PowerShell, &mut app, BIN_NAME, &mut stdout),
         }
-        exit(0);
+        std::process::exit(0);
     }
 
     let music_dir = {
@@ -149,7 +148,7 @@ pub fn parse_args() -> Args {
         let path = PathBuf::from(dir.as_ref());
         if !path.exists() {
             println!("Not a valid music dir path: {}", dir);
-            exit(1)
+            std::process::exit(1)
         }
         path
     };

@@ -1,4 +1,4 @@
-use std::fmt::{self, Display};
+use std::fmt::Display;
 use std::path::Path;
 
 use colored::Colorize;
@@ -14,7 +14,7 @@ pub struct SongOp<'a>(
 );
 
 impl Display for SongOp<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         format_song_op(f, self.0, self.1, self.2, self.3, self.4, self.5)
     }
 }
@@ -29,21 +29,21 @@ pub struct FileOp<'a>(
 );
 
 impl Display for FileOp<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         format_file_op(f, self.0, self.1, self.2, self.3, self.4, self.5)
     }
 }
 
 /// TODO: proper mode formatting
 fn format_song_op(
-    f: &mut impl fmt::Write,
+    f: &mut impl std::fmt::Write,
     music_dir: &Path,
     output_dir: &Path,
     song_op: &SongOperation,
     op_type_str: &str,
     rename_str: &str,
     verbosity: u8,
-) -> fmt::Result {
+) -> std::fmt::Result {
     if song_op.mode_update.is_some() {
         print!("mode");
     }
@@ -79,14 +79,14 @@ fn format_song_op(
 }
 
 fn format_file_op(
-    f: &mut impl fmt::Write,
+    f: &mut impl std::fmt::Write,
     music_dir: &Path,
     output_dir: &Path,
     old_path: &Path,
     new_path: &Path,
     op_type_str: &str,
     rename_str: &str,
-) -> fmt::Result {
+) -> std::fmt::Result {
     let old = strip_dir(old_path, music_dir).yellow();
 
     let mut just_rename = false;
@@ -115,11 +115,11 @@ fn format_file_op(
 
 /// TODO: prettier tag update
 fn format_tag_update(
-    f: &mut impl fmt::Write,
+    f: &mut impl std::fmt::Write,
     s: &Song,
     u: &TagUpdate,
     _verbosity: u8,
-) -> fmt::Result {
+) -> std::fmt::Result {
     format_string_vec(f, "release artists", &s.release_artists, &u.release_artists)?;
     format_string_vec(f, "artists", &s.artists, &u.artists)?;
     format_string(f, "release", &s.release, &u.release)?;
@@ -134,11 +134,11 @@ fn format_tag_update(
 }
 
 fn format_u16(
-    f: &mut impl fmt::Write,
+    f: &mut impl std::fmt::Write,
     name: &str,
     old: Option<u16>,
     new: Value<u16>,
-) -> Result<bool, fmt::Error> {
+) -> Result<bool, std::fmt::Error> {
     match (old, new) {
         (Some(old), Value::Update(new)) => {
             write!(f, "change {name}: {} to {}", old.to_string().yellow(), new.to_string().green())?
@@ -152,11 +152,11 @@ fn format_u16(
 }
 
 fn format_string(
-    f: &mut impl fmt::Write,
+    f: &mut impl std::fmt::Write,
     name: &str,
     old: &str,
     new: &Value<String>,
-) -> Result<bool, fmt::Error> {
+) -> Result<bool, std::fmt::Error> {
     match new {
         Value::Update(new) => write!(f, "change {name}: {} to {}", old.yellow(), new.green())?,
         Value::Remove => write!(f, "remove {name}: {}", old.red())?,
@@ -167,11 +167,11 @@ fn format_string(
 }
 
 fn format_string_vec(
-    f: &mut impl fmt::Write,
+    f: &mut impl std::fmt::Write,
     name: &str,
     old: &[String],
     new: &Value<Vec<String>>,
-) -> Result<bool, fmt::Error> {
+) -> Result<bool, std::fmt::Error> {
     match new {
         Value::Update(new) => {
             write!(f, "change {name}: {} to {}", old.join(", ").yellow(), new.join(", ").green())?
@@ -184,11 +184,11 @@ fn format_string_vec(
 }
 
 fn format_value<T>(
-    f: &mut impl fmt::Write,
+    f: &mut impl std::fmt::Write,
     name: &str,
     old: bool,
     new: &Value<T>,
-) -> Result<bool, fmt::Error> {
+) -> Result<bool, std::fmt::Error> {
     match (old, new) {
         (true, Value::Update(_)) => write!(f, "change {name}")?,
         (false, Value::Update(_)) => write!(f, "add {name}")?,
