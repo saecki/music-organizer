@@ -1,4 +1,3 @@
-use std::fmt::Write;
 use std::fs::{File, Permissions};
 use std::path::{Path, PathBuf};
 
@@ -71,7 +70,7 @@ impl Metadata {
     }
 
     fn read_mp3(file: &File) -> Option<Self> {
-        let tag = id3::Tag::read_from(file).ok()?;
+        let tag = id3::Tag::read_from2(file).ok()?;
 
         Some(Self {
             mode: Mode::read(file),

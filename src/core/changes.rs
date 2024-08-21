@@ -72,7 +72,7 @@ impl<'a> Changes<'a> {
             let artists = valid_os_str(&artists);
 
             let title = tag_update.and_then(|t| t.title.str_value()).unwrap_or(&song.title);
-            let title = valid_os_str(&title);
+            let title = valid_os_str(title);
 
             let extension = song.path.extension().unwrap();
 

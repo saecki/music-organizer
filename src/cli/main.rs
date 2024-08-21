@@ -533,14 +533,14 @@ fn inconsitent_artists_dialog(a: &ReleaseArtists, b: &ReleaseArtists) -> Value<V
     );
 
     match index {
-        0 => return Value::Unchanged,
+        0 => Value::Unchanged,
         1 => {
             println!("renaming first to second");
-            return Value::Update(b.names.to_vec());
+            Value::Update(b.names.to_vec())
         }
         2 => {
             println!("renaming second to first");
-            return Value::Update(a.names.to_vec());
+            Value::Update(a.names.to_vec())
         }
         3 => {
             let mut new_names = Vec::new();
