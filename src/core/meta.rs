@@ -153,25 +153,26 @@ pub struct Mode(pub u32);
 
 impl std::fmt::Display for Mode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        fn write_char_or_dash(
-            f: &mut std::fmt::Formatter<'_>,
-            val: u32,
-            char: char,
-        ) -> std::fmt::Result {
-            if val == 0 {
-                f.write_char('-')
-            } else {
-                f.write_char(char)
-            }
-        }
         fn write_permissions(
             f: &mut std::fmt::Formatter<'_>,
             mode: u32,
             offset: u32,
         ) -> std::fmt::Result {
-            write_char_or_dash(f, mode & (0o4 << offset), 'r')?;
-            write_char_or_dash(f, mode & (0o2 << offset), 'w')?;
-            write_char_or_dash(f, mode & (0o1 << offset), 'x')?;
+            if mode & (0o4 << offset) == 0 {
+                f.write_str("\x1b[90m-\x1b[0m")?;
+            } else {
+                f.write_str("\x1b[93mr\x1b[0m")?;
+            }
+            if mode & (0o2 << offset) == 0 {
+                f.write_str("\x1b[90m-\x1b[0m")?;
+            } else {
+                f.write_str("\x1b[91mw\x1b[0m")?;
+            }
+            if mode & (0o1 << offset) == 0 {
+                f.write_str("\x1b[90m-\x1b[0m")?;
+            } else {
+                f.write_str("\x1b[92mx\x1b[0m")?;
+            }
             Ok(())
         }
         write_permissions(f, self.0, 6)?;
