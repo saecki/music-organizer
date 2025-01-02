@@ -2,6 +2,7 @@ use colored::Colorize;
 use music_organizer::{Changes, Checks, Cleanup, FileOpType, MusicIndex, ReleaseArtists, Value};
 use std::fmt::Write as _;
 use std::io::Write as _;
+use std::time::Instant;
 
 use crate::args::Args;
 use crate::display::strip_dir;
@@ -70,6 +71,33 @@ macro_rules! print_verbose {
     }}
 }
 
+struct Timer {
+    start: Instant,
+    timings: Vec<(Instant, String)>,
+}
+impl Timer {
+    fn new() -> Self {
+        Self { start: Instant::now(), timings: Vec::new() }
+    }
+
+    fn time(&mut self, name: impl Into<String>) {
+        self.timings.push((Instant::now(), name.into()));
+    }
+
+    fn display(&self) {
+        let mut prev = self.start;
+        for (time, name) in self.timings.iter() {
+            let millis = time.duration_since(prev).as_millis();
+            println!("{millis:6}ms  {name}");
+
+            prev = *time;
+        }
+
+        let millis = prev.duration_since(self.start).as_millis();
+        println!("{millis:6}ms  total");
+    }
+}
+
 fn main() {
     let args = args::parse_args();
     let dict = Dict {
@@ -80,19 +108,24 @@ fn main() {
         rename: RENAME_TENSES,
     };
 
+    let mut timer = Timer::new();
+
     // indexing
     let mut index = MusicIndex::from(args.music_dir.clone());
     display_indexing(&mut index, &args);
+    timer.time("indexing");
 
     // checking
     let mut checks = Checks::from(&index);
     if !args.no_check {
         display_checking(&mut checks, &args);
     }
+    timer.time("checking");
 
     // changes
     let changes = Changes::generate(checks, &args.output_dir);
     display_changes(&changes, &args, &dict);
+    timer.time("changes");
 
     if !changes.is_empty() {
         // writing
@@ -102,16 +135,19 @@ fn main() {
                 successfull_early_exit();
             }
         }
-        display_writing(&changes, &args, &dict)
+        display_writing(&changes, &args, &dict);
+        timer.time("writing");
     }
 
     if !args.no_cleanup {
         // cleanup
         let mut cleanup = Cleanup::from(args.music_dir.clone());
         display_cleanup(&mut cleanup, &args);
+        timer.time("cleanup");
 
         // deletions
         display_deletions(&cleanup, &args);
+        timer.time("deletions");
 
         if !cleanup.is_empty() {
             // cleaning
@@ -122,7 +158,12 @@ fn main() {
                 }
             }
             display_cleaning(&cleanup, &args);
+            timer.time("cleaning");
         }
+    }
+
+    if args.timings {
+        timer.display();
     }
 }
 

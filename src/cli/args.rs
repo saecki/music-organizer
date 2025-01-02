@@ -41,6 +41,7 @@ pub struct Args {
     pub no_check: bool,
     pub keep_embedded_artworks: bool,
     pub no_cleanup: bool,
+    pub timings: bool,
 }
 
 pub fn parse_args() -> Args {
@@ -126,6 +127,13 @@ pub fn parse_args() -> Args {
                 .help("Generates a completion script for the specified shell")
                 .conflicts_with("music-dir")
                 .value_parser(value_parser!(Shell)),
+        )
+        .arg(
+            Arg::new("timings")
+                .short('t')
+                .long("timings")
+                .help("Prints timing information")
+                .num_args(0),
         );
 
     let matches = app.clone().get_matches();
@@ -174,5 +182,6 @@ pub fn parse_args() -> Args {
         keep_embedded_artworks: matches.get_flag("keep embedded artworks"),
         no_cleanup: matches.get_flag("nocleanup"),
         dry_run: matches.get_flag("dryrun"),
+        timings: matches.get_flag("timings"),
     }
 }
