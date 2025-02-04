@@ -1,8 +1,18 @@
 use std::fmt::Display;
 use std::path::Path;
 
-use colored::Colorize;
 use music_organizer::{Song, SongOperation, TagUpdate, Value};
+
+pub const ANSII_CLEAR: &str = "\x1b[0m";
+pub const ANSII_RED: &str = "\x1b[31m";
+pub const ANSII_GREEN: &str = "\x1b[32m";
+pub const ANSII_YELLOW: &str = "\x1b[33m";
+pub const ANSII_BLUE: &str = "\x1b[34m";
+
+pub const ANSII_GREEN_ON_BLACK: &str = "\x1b[32;40m";
+pub const ANSII_YELLOW_ON_BLACK: &str = "\x1b[33;40m";
+pub const ANSII_PURPLE_ON_BLACK: &str = "\x1b[35;40m";
+pub const ANSII_CYAN_ON_BLACK: &str = "\x1b[36;40m";
 
 pub struct SongOp<'a>(
     pub &'a Path,
@@ -63,7 +73,7 @@ fn format_song_op(
         }
         (None, Some(tag_update)) => {
             format_tag_update(f, song_op.song, tag_update, verbosity)?;
-            write!(f, " {}", strip_dir(&song_op.song.path, music_dir).green())
+            write!(f, " {ANSII_GREEN}{}{ANSII_CLEAR}", strip_dir(&song_op.song.path, music_dir))
         }
         (Some(new_path), None) => format_file_op(
             f,
@@ -87,7 +97,7 @@ fn format_file_op(
     op_type_str: &str,
     rename_str: &str,
 ) -> std::fmt::Result {
-    let old = strip_dir(old_path, music_dir).yellow();
+    let old = strip_dir(old_path, music_dir);
 
     let mut just_rename = false;
     let release_dir = old_path.parent().unwrap();
@@ -95,20 +105,16 @@ fn format_file_op(
         Some(p) => {
             if p.components().count() == 1 {
                 just_rename = true;
-                p.display().to_string().green()
+                p.display()
             } else {
-                strip_dir(new_path, output_dir).green()
+                strip_dir(new_path, output_dir)
             }
         }
-        None => strip_dir(new_path, output_dir).green(),
+        None => strip_dir(new_path, output_dir),
     };
 
     let operation = if just_rename { rename_str } else { op_type_str };
-    if operation.len() + old.len() + new.len() + 5 <= 180 {
-        write!(f, "{operation} {old} to {new}")?;
-    } else {
-        write!(f, "{operation} {old}\n    to {new}")?;
-    }
+    write!(f, "{operation} {ANSII_YELLOW}{old}{ANSII_CLEAR} to {ANSII_GREEN}{new}{ANSII_CLEAR}")?;
 
     Ok(())
 }
@@ -140,11 +146,12 @@ fn format_u16(
     new: Value<u16>,
 ) -> Result<bool, std::fmt::Error> {
     match (old, new) {
-        (Some(old), Value::Update(new)) => {
-            write!(f, "change {name}: {} to {}", old.to_string().yellow(), new.to_string().green())?
-        }
-        (None, Value::Update(new)) => write!(f, "add {name}: {}", new.to_string().green())?,
-        (Some(old), Value::Remove) => write!(f, "remove {name}: {}", old.to_string().red())?,
+        (Some(old), Value::Update(new)) => write!(
+            f,
+            "change {name}: {ANSII_YELLOW}{old}{ANSII_CLEAR} to {ANSII_GREEN}{new}{ANSII_CLEAR}"
+        )?,
+        (None, Value::Update(new)) => write!(f, "add {name}: {ANSII_GREEN}{new}{ANSII_CLEAR}")?,
+        (Some(old), Value::Remove) => write!(f, "remove {name}: {ANSII_RED}{old}{ANSII_CLEAR}")?,
         _ => return Ok(false),
     }
 
@@ -158,8 +165,11 @@ fn format_string(
     new: &Value<String>,
 ) -> Result<bool, std::fmt::Error> {
     match new {
-        Value::Update(new) => write!(f, "change {name}: {} to {}", old.yellow(), new.green())?,
-        Value::Remove => write!(f, "remove {name}: {}", old.red())?,
+        Value::Update(new) => write!(
+            f,
+            "change {name}: {ANSII_YELLOW}{old}{ANSII_CLEAR} to {ANSII_GREEN}{new}{ANSII_CLEAR}"
+        )?,
+        Value::Remove => write!(f, "remove {name}: {ANSII_RED}{old}{ANSII_CLEAR}")?,
         Value::Unchanged => return Ok(false),
     }
 
@@ -173,10 +183,13 @@ fn format_string_vec(
     new: &Value<Vec<String>>,
 ) -> Result<bool, std::fmt::Error> {
     match new {
-        Value::Update(new) => {
-            write!(f, "change {name}: {} to {}", old.join(", ").yellow(), new.join(", ").green())?
-        }
-        Value::Remove => write!(f, "remove {name}: {}", old.join(", ").red())?,
+        Value::Update(new) => write!(
+            f,
+            "change {name}: {ANSII_YELLOW}{}{ANSII_CLEAR} to {ANSII_GREEN}{}{ANSII_CLEAR}",
+            old.join(", "),
+            new.join(", ")
+        )?,
+        Value::Remove => write!(f, "remove {name}: {ANSII_RED}{}{ANSII_CLEAR}", old.join(", "))?,
         Value::Unchanged => return Ok(false),
     }
 
@@ -199,6 +212,6 @@ fn format_value<T>(
     Ok(true)
 }
 
-pub fn strip_dir(path: &Path, dir: &Path) -> String {
-    path.strip_prefix(dir).unwrap().display().to_string()
+pub fn strip_dir<'a>(path: &'a Path, dir: &Path) -> std::path::Display<'a> {
+    path.strip_prefix(dir).unwrap().display()
 }

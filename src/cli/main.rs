@@ -1,4 +1,3 @@
-use colored::Colorize;
 use music_organizer::{Changes, Checks, Cleanup, FileOpType, MusicIndex, ReleaseArtists, Value};
 use std::fmt::Write as _;
 use std::io::Write as _;
@@ -6,6 +5,10 @@ use std::time::Instant;
 
 use crate::args::Args;
 use crate::display::strip_dir;
+use crate::display::{
+    ANSII_BLUE, ANSII_CLEAR, ANSII_CYAN_ON_BLACK, ANSII_GREEN, ANSII_GREEN_ON_BLACK,
+    ANSII_PURPLE_ON_BLACK, ANSII_RED, ANSII_YELLOW, ANSII_YELLOW_ON_BLACK,
+};
 
 mod args;
 mod display;
@@ -49,12 +52,12 @@ fn print_title_verbose(verbose: bool, title: &str) {
 
 fn print_title(title: &str) {
     let padding = MAX_TITLE_WITH - title.len() + 1;
-    println!("{} ", format!(" {title}{:padding$}", "").purple().on_black());
+    println!("{ANSII_PURPLE_ON_BLACK} {title}{:padding$}{ANSII_CLEAR} ", "");
 }
 
 fn print_subtitle(title: &str) {
     let padding = MAX_SUBTITLE_WITH - title.len() + 1;
-    println!("{} ", format!(" {title}{:padding$}", "").cyan().on_black());
+    println!("{ANSII_CYAN_ON_BLACK} {title}{:padding$}{ANSII_CLEAR} ", "");
 }
 
 macro_rules! print_verbose {
@@ -64,7 +67,7 @@ macro_rules! print_verbose {
         } else {
             print!("\x1b[2K\r");
             let padding = MAX_TITLE_WITH - $title.len() + 1;
-            print!("{} ", format!(" {}{:padding$}", $title, "").purple().on_black());
+            print!("{ANSII_PURPLE_ON_BLACK} {}{:padding$}{ANSII_CLEAR} ", $title, "");
             print!($pat $(,$args)*);
             std::io::stdout().flush().ok();
         }
@@ -171,24 +174,21 @@ fn display_indexing(index: &mut MusicIndex, args: &Args) {
     let verbose = args.verbosity >= 2;
     print_title_verbose(verbose, TITLE_INDEXING);
 
-    let mut i = 1;
+    let mut i = 0;
     index.read(&mut |p| {
+        i += 1;
         print_verbose!(
             verbose,
             TITLE_INDEXING,
-            "{} {}",
-            i.to_string().blue(),
-            strip_dir(p, &args.music_dir).yellow()
+            "{ANSII_BLUE}{i} {ANSII_YELLOW}{}{ANSII_CLEAR}",
+            strip_dir(p, &args.music_dir)
         );
-        i += 1;
     });
     if !verbose {
         print_verbose!(
             verbose,
             TITLE_INDEXING,
-            "{} {}",
-            (i - 1).to_string().blue(),
-            "files indexed".green()
+            "{ANSII_BLUE}{i} {ANSII_GREEN}files indexed{ANSII_CLEAR}",
         );
     }
     println!();
@@ -199,21 +199,21 @@ fn display_checking(checks: &mut Checks, args: &Args) {
     print_title_verbose(verbose, TITLE_CHECKING);
 
     if !args.keep_embedded_artworks {
-        print_verbose!(verbose, TITLE_CHECKING, "{}", "embedded artworks".yellow());
+        print_verbose!(verbose, TITLE_CHECKING, "{ANSII_YELLOW}embedded artworks{ANSII_CLEAR}",);
         checks.remove_embedded_artworks();
     }
 
-    print_verbose!(verbose, TITLE_CHECKING, "{}", "file permissions".yellow());
+    print_verbose!(verbose, TITLE_CHECKING, "{ANSII_YELLOW}file permissions{ANSII_CLEAR}",);
     checks.check_file_permissions();
 
-    print_verbose!(verbose, TITLE_CHECKING, "{}", "inconsistent artists".yellow());
+    print_verbose!(verbose, TITLE_CHECKING, "{ANSII_YELLOW}inconsistent artists{ANSII_CLEAR}",);
     checks.check_inconsitent_release_artists(inconsitent_artists_dialog);
     //changes.check_inconsitent_albums(inconsitent_albums_dialog);
     //changes.check_inconsitent_total_tracks(inconsitent_total_tracks_dialog);
     //changes.check_inconsitent_total_discs(inconsitent_total_discs_dialog);
 
     if !verbose {
-        print_verbose!(verbose, TITLE_CHECKING, "{}", "done".green());
+        print_verbose!(verbose, TITLE_CHECKING, "{ANSII_GREEN}done{ANSII_CLEAR}",);
     }
 
     println!();
@@ -223,7 +223,7 @@ fn display_changes(changes: &Changes, args: &Args, dict: &Dict) {
     if changes.is_empty() {
         let verbose = args.verbosity >= 2;
         print_title_verbose(verbose, TITLE_CHANGES);
-        print_verbose!(verbose, TITLE_CHANGES, "{}\n", "nothing to do".green());
+        print_verbose!(verbose, TITLE_CHANGES, "{ANSII_GREEN}nothing to do{ANSII_CLEAR}\n",);
         return;
     }
 
@@ -234,10 +234,10 @@ fn display_changes(changes: &Changes, args: &Args, dict: &Dict) {
         if !changes.dir_creations.is_empty() {
             print_subtitle(SUBTITLE_DIRS);
             for (i, d) in changes.dir_creations.iter().enumerate() {
+                let n = i + 1;
                 println!(
-                    "{} create {}",
-                    (i + 1).to_string().blue(),
-                    format!("{}", d.path.display()).yellow()
+                    "{ANSII_BLUE}{n}{ANSII_CLEAR} create {ANSII_YELLOW}{}{ANSII_CLEAR}",
+                    d.path.display()
                 );
             }
             println!();
@@ -245,9 +245,9 @@ fn display_changes(changes: &Changes, args: &Args, dict: &Dict) {
         if !changes.song_operations.is_empty() {
             print_subtitle(SUBTITLE_SONGS);
             for (i, o) in changes.song_operations.values().enumerate() {
+                let n = i + 1;
                 println!(
-                    "{} {}",
-                    (i + 1).to_string().blue(),
+                    "{ANSII_BLUE}{n}{ANSII_CLEAR} {}",
                     display::SongOp(
                         &args.music_dir,
                         &args.output_dir,
@@ -263,9 +263,9 @@ fn display_changes(changes: &Changes, args: &Args, dict: &Dict) {
         if !changes.file_operations.is_empty() {
             print_subtitle(SUBTITLE_OTHERS);
             for (i, f) in changes.file_operations.iter().enumerate() {
+                let n = i + 1;
                 println!(
-                    "{} {}",
-                    (i + 1).to_string().blue(),
+                    "{ANSII_BLUE}{n}{ANSII_CLEAR} {}",
                     display::FileOp(
                         &args.music_dir,
                         &args.output_dir,
@@ -285,11 +285,9 @@ fn display_changes(changes: &Changes, args: &Args, dict: &Dict) {
     print_verbose!(
         verbose,
         TITLE_CHANGES,
-        "{} {} will be created{}{} {} will be {}",
-        num_dir_creations.to_string().blue(),
+        "{ANSII_BLUE}{num_dir_creations}{ANSII_CLEAR} {} will be created{}{ANSII_BLUE}{num_file_ops}{ANSII_CLEAR} {} will be {}",
         if num_dir_creations == 1 { "dir" } else { "dirs" },
         if verbose { '\n' } else { ' ' },
-        num_file_ops.to_string().blue(),
         if num_file_ops == 1 { "file" } else { "files" },
         dict.op_type.sim_past
     );
@@ -306,15 +304,15 @@ fn display_writing(changes: &Changes, args: &Args, dict: &Dict) {
     let verbose = args.verbosity >= 2;
     print_title_verbose(verbose, TITLE_WRITING);
 
-    let mut dir_creation_idx = 1;
+    let mut dir_creation_idx = 0;
     changes.execute_dir_creations(&mut |d, r| {
+        dir_creation_idx += 1;
         match r {
             Ok(_) => {
                 print_verbose!(
                     verbose,
                     TITLE_WRITING,
-                    "{} created dir {}",
-                    dir_creation_idx.to_string().blue(),
+                    "{ANSII_BLUE}{dir_creation_idx}{ANSII_CLEAR} created dir {}",
                     d.path.display()
                 );
             }
@@ -322,43 +320,35 @@ fn display_writing(changes: &Changes, args: &Args, dict: &Dict) {
                 print_verbose!(
                     false,
                     TITLE_WRITING,
-                    "{} {} creating dir {}: {}\n",
-                    dir_creation_idx.to_string().blue(),
-                    "error".red(),
-                    d.path.display(),
-                    e.to_string().red()
+                    "{ANSII_BLUE}{dir_creation_idx}{ANSII_CLEAR} {ANSII_RED}error{ANSII_CLEAR} creating dir {}: {ANSII_RED}{e}{ANSII_CLEAR}\n",
+                    d.path.display()
                 );
             }
         }
-
-        dir_creation_idx += 1;
     });
 
-    let mut file_operation_idx = 1;
+    let mut file_operation_idx = 0;
     changes.execute_song_operations(args.op_type, &mut |o, r| {
+        file_operation_idx += 1;
         match r {
             Ok(_) => {
-                let display_obj = display::SongOp(
-                    &args.music_dir,
-                    &args.output_dir,
-                    o,
-                    dict.op_type.sim_past,
-                    dict.rename.sim_past,
-                    args.verbosity,
-                );
                 print_verbose!(
                     verbose,
                     TITLE_WRITING,
-                    "{} {}",
-                    file_operation_idx.to_string().blue(),
-                    display_obj
+                    "{ANSII_BLUE}{file_operation_idx}{ANSII_CLEAR} {}",
+                    display::SongOp(
+                        &args.music_dir,
+                        &args.output_dir,
+                        o,
+                        dict.op_type.sim_past,
+                        dict.rename.sim_past,
+                        args.verbosity,
+                    )
                 );
             }
             Err(e) => {
                 println!(
-                    "{} {} {}:\n{}",
-                    file_operation_idx.to_string().blue(),
-                    "error".red(),
+                    "{ANSII_BLUE}{file_operation_idx}{ANSII_CLEAR} {ANSII_RED}error{ANSII_CLEAR} {}:\n{ANSII_RED}{e}{ANSII_CLEAR}",
                     display::SongOp(
                         &args.music_dir,
                         &args.output_dir,
@@ -367,38 +357,32 @@ fn display_writing(changes: &Changes, args: &Args, dict: &Dict) {
                         dict.rename.pres_prog,
                         VERBOSE
                     ),
-                    e.to_string().red(),
                 );
             }
         }
-
-        file_operation_idx += 1;
     });
 
     changes.execute_file_operations(args.op_type, &mut |f, r| {
+        file_operation_idx += 1;
         match r {
             Ok(_) => {
-                let display_obj = display::FileOp(
-                    &args.music_dir,
-                    &args.output_dir,
-                    f.old_path,
-                    &f.new_path,
-                    dict.op_type.sim_past,
-                    dict.rename.sim_past,
-                );
                 print_verbose!(
                     verbose,
                     TITLE_WRITING,
-                    "{} {}",
-                    file_operation_idx.to_string().blue(),
-                    display_obj
+                    "{ANSII_BLUE}{file_operation_idx}{ANSII_CLEAR} {}",
+                    display::FileOp(
+                        &args.music_dir,
+                        &args.output_dir,
+                        f.old_path,
+                        &f.new_path,
+                        dict.op_type.sim_past,
+                        dict.rename.sim_past,
+                    )
                 );
             }
             Err(e) => {
-                print!(
-                    "{} {} {}:\n{}",
-                    file_operation_idx.to_string().blue(),
-                    "error".red(),
+                println!(
+                    "{ANSII_BLUE}{file_operation_idx}{ANSII_CLEAR} {ANSII_RED}error{ANSII_CLEAR} {}:\n{ANSII_RED}{e}{ANSII_CLEAR}",
                     display::FileOp(
                         &args.music_dir,
                         &args.output_dir,
@@ -406,27 +390,22 @@ fn display_writing(changes: &Changes, args: &Args, dict: &Dict) {
                         &f.new_path,
                         dict.op_type.pres_prog,
                         dict.rename.pres_prog,
-                    ),
-                    e.to_string().red(),
+                    )
                 );
             }
         }
-
-        file_operation_idx += 1;
     });
 
     if !verbose {
-        let num_dir_creations = dir_creation_idx - 1;
-        let num_file_ops = file_operation_idx - 1;
+        let num_dir_creations = dir_creation_idx;
+        let num_file_ops = file_operation_idx;
         print_verbose!(
             verbose,
             TITLE_WRITING,
-            "{} {} {} {} {}",
-            num_dir_creations.to_string().blue(),
-            if num_dir_creations == 1 { "dir created" } else { "dirs created" }.green(),
-            num_file_ops.to_string().blue(),
-            if num_file_ops == 1 { "file" } else { "files" }.green(),
-            dict.op_type.sim_past.green()
+            "{ANSII_BLUE}{num_dir_creations} {ANSII_GREEN}{} {ANSII_BLUE}{num_file_ops} {ANSII_GREEN}{} {ANSII_GREEN}{}{ANSII_CLEAR}",
+            if num_dir_creations == 1 { "dir created" } else { "dirs created" },
+            if num_file_ops == 1 { "file" } else { "files" },
+            dict.op_type.sim_past
         );
     }
 
@@ -437,26 +416,22 @@ fn display_cleanup(cleanup: &mut Cleanup, args: &Args) {
     let verbose = args.verbosity >= 2;
     print_title_verbose(verbose, TITLE_CLEANUP);
 
-    let mut i = 1;
+    let mut i = 0;
     cleanup.check(&mut |p| {
+        i += 1;
         print_verbose!(
             verbose,
             TITLE_CLEANUP,
-            "{} {}",
-            i.to_string().blue(),
-            strip_dir(p, &args.music_dir).yellow()
+            "{ANSII_BLUE}{i} {ANSII_YELLOW}{}{ANSII_CLEAR}",
+            strip_dir(p, &args.music_dir)
         );
-
-        i += 1;
     });
 
     if !verbose {
         print_verbose!(
             verbose,
             TITLE_CLEANUP,
-            "{} {}",
-            (i - 1).to_string().blue(),
-            "dirs checked".green()
+            "{ANSII_BLUE}{i} {ANSII_GREEN}dirs checked{ANSII_CLEAR}",
         );
     }
 
@@ -467,7 +442,7 @@ fn display_deletions(cleanup: &Cleanup, args: &Args) {
     if cleanup.is_empty() {
         let verbose = args.verbosity >= 2;
         print_title_verbose(verbose, TITLE_DELETIONS);
-        print_verbose!(verbose, TITLE_DELETIONS, "{}\n", "nothing to cleanup".green());
+        print_verbose!(verbose, TITLE_DELETIONS, "{ANSII_GREEN}nothing to cleanup{ANSII_CLEAR}\n",);
     } else {
         let verbose = args.verbosity >= 1;
         print_title_verbose(verbose, TITLE_DELETIONS);
@@ -476,10 +451,10 @@ fn display_deletions(cleanup: &Cleanup, args: &Args) {
             print_subtitle(SUBTITLE_DIRS);
 
             for (i, d) in cleanup.dir_deletions.iter().enumerate() {
+                let n = i + 1;
                 println!(
-                    "{} delete {}",
-                    (i + 1).to_string().blue(),
-                    strip_dir(&d.path, &args.music_dir).red(),
+                    "{ANSII_BLUE}{n}{ANSII_CLEAR} delete {ANSII_RED}{}{ANSII_RED}",
+                    strip_dir(&d.path, &args.music_dir)
                 );
             }
             println!();
@@ -489,8 +464,7 @@ fn display_deletions(cleanup: &Cleanup, args: &Args) {
         print_verbose!(
             verbose,
             TITLE_DELETIONS,
-            "{} {} will be deleted",
-            num_dir_deletions.to_string().blue(),
+            "{ANSII_BLUE}{num_dir_deletions}{ANSII_CLEAR} {} will be deleted",
             if num_dir_deletions == 1 { "dir" } else { "dirs" }
         );
 
@@ -505,25 +479,23 @@ fn display_cleaning(cleanup: &Cleanup, args: &Args) {
         let verbose = args.verbosity >= 2;
         print_title_verbose(verbose, TITLE_CLEANING);
 
-        let mut i = 1;
+        let mut i = 0;
         cleanup.excecute(&mut |p| {
+            i += 1;
             print_verbose!(
                 verbose,
                 TITLE_CLEANING,
-                "{} deleted {}",
-                i.to_string().blue(),
-                strip_dir(p, &args.music_dir).red()
+                "{ANSII_BLUE}{i}{ANSII_CLEAR} deleted {ANSII_RED}{}{ANSII_CLEAR}",
+                strip_dir(p, &args.music_dir)
             );
-            i += 1;
         });
 
         if !verbose {
             print_verbose!(
                 verbose,
                 TITLE_CLEANING,
-                "{} {}",
-                (i - 1).to_string().blue(),
-                if i == 1 { "dir deleted" } else { "dirs deleted" }.green()
+                "{ANSII_BLUE}{i} {ANSII_GREEN}{}{ANSII_CLEAR}",
+                if i == 1 { "dir deleted" } else { "dirs deleted" }
             );
         }
         println!();
@@ -533,18 +505,18 @@ fn display_cleaning(cleanup: &Cleanup, args: &Args) {
 fn inconsitent_artists_dialog(a: &ReleaseArtists, b: &ReleaseArtists) -> Value<Vec<String>> {
     fn print(artist: &ReleaseArtists) {
         for n in artist.names {
-            println!(" {}", n.yellow().on_black());
+            println!(" {ANSII_YELLOW_ON_BLACK}{n}{ANSII_CLEAR}");
         }
         println!();
         for (i, al) in artist.releases.iter().enumerate() {
             if i == 10 {
-                println!("   {}", "...".green());
+                println!("   {ANSII_GREEN}...{ANSII_CLEAR}");
                 break;
             }
             println!("   {}:", al.name);
             for (j, s) in al.songs.iter().enumerate() {
                 if i >= 4 || j == 3 {
-                    println!("      {}", "...".green());
+                    println!("      {ANSII_GREEN}...{ANSII_CLEAR}");
                     break;
                 } else {
                     println!(
@@ -589,7 +561,7 @@ fn inconsitent_artists_dialog(a: &ReleaseArtists, b: &ReleaseArtists) -> Value<V
                 new_names.push(string_input("enter new name:"));
                 let mut msg = String::from("new name[s]:");
                 for n in new_names.iter() {
-                    _ = write!(msg, " {}", n.green().on_black());
+                    _ = write!(msg, " {ANSII_GREEN_ON_BLACK}{n}{ANSII_CLEAR}");
                 }
 
                 let i = options_input(&msg, &["ok", "reenter name", "add another", "dismiss"]);
