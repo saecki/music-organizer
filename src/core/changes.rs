@@ -1,7 +1,7 @@
 use std::ffi::OsString;
 use std::path::Path;
 
-use crate::fs::{valid_os_str, valid_os_str_dots};
+use crate::fs::{fast_path_eq, valid_os_str, valid_os_str_dots};
 use crate::{
     util, Checks, DirCreation, FileOpType, FileOperation, MusicIndex, Song, SongOperation,
 };
@@ -29,7 +29,7 @@ impl<'a> Changes<'a> {
 
 impl<'a> Changes<'a> {
     fn new_song_path(&self, song: &'a Song) -> &Path {
-        if let Some(o) = self.song_operations.iter().find(|o| o.song == song) {
+        if let Some(o) = self.song_operations.iter().find(|o| std::ptr::eq(o.song, song)) {
             if let Some(p) = &o.new_path {
                 return p;
             }
@@ -39,7 +39,7 @@ impl<'a> Changes<'a> {
     }
 
     fn dir_creation(&mut self, path: &Path) -> bool {
-        if !self.dir_creations.iter().any(|d| d.path == path) && !path.exists() {
+        if !self.dir_creations.iter().any(|d| fast_path_eq(&d.path, path)) && !path.exists() {
             self.dir_creations.push(DirCreation { path: path.to_owned() });
             true
         } else {
@@ -53,7 +53,7 @@ impl<'a> Changes<'a> {
         }
 
         for song in self.index.songs.iter() {
-            let op = self.song_operations.iter_mut().find(|o| o.song == song);
+            let op = self.song_operations.iter_mut().find(|o| std::ptr::eq(o.song, song));
             let tag_update = op.and_then(|op| op.tag_update.as_ref());
 
             let release_artists = tag_update
@@ -122,13 +122,13 @@ impl<'a> Changes<'a> {
                 .index
                 .songs
                 .iter()
-                .filter(|s| s.path.parent().unwrap() == current_dir)
+                .filter(|s| fast_path_eq(s.path.parent().unwrap(), current_dir))
                 .map(|s| self.new_song_path(s).parent().unwrap());
 
             if let Some(n) = new_song_dirs.next() {
                 let new_song_dir = n;
 
-                if new_song_dir == current_dir {
+                if fast_path_eq(new_song_dir, current_dir) {
                     continue;
                 }
 

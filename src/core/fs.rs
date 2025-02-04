@@ -133,6 +133,11 @@ pub fn valid_os_str(str: &str) -> String {
     RE.replace_all(str, "").trim().to_string()
 }
 
+#[inline]
+pub fn fast_path_eq(l: &Path, r: &Path) -> bool {
+    l.as_os_str() == r.as_os_str()
+}
+
 const SONG_EXTENSIONS: [&str; 3] = ["m4a", "mp3", "flac"];
 #[inline]
 pub fn is_song_extension(s: &OsStr) -> bool {
