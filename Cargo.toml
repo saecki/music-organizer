@@ -12,6 +12,10 @@ path = "src/core/lib.rs"
 name = "music-organizer"
 path = "src/cli/main.rs"
 
+[profile.release]
+codegen-units = 1
+lto = true
+
 [dependencies]
 clap = { version = "4.5", features = ["wrap_help", "cargo"] }
 clap_complete = "4.5"
