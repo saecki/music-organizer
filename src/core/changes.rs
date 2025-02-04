@@ -1,5 +1,8 @@
-use std::ffi::OsString;
+use std::collections::BTreeMap;
+use std::ffi::{OsStr, OsString};
 use std::path::Path;
+
+use indexmap::IndexMap;
 
 use crate::fs::{fast_path_eq, valid_os_str, valid_os_str_dots};
 use crate::{
@@ -10,7 +13,7 @@ use crate::{
 pub struct Changes<'a> {
     pub index: &'a MusicIndex,
     pub dir_creations: Vec<DirCreation>,
-    pub song_operations: Vec<SongOperation<'a>>,
+    pub song_operations: IndexMap<*const Song, SongOperation<'a>>,
     pub file_operations: Vec<FileOperation<'a>>,
 }
 
@@ -29,7 +32,7 @@ impl<'a> Changes<'a> {
 
 impl<'a> Changes<'a> {
     fn new_song_path(&self, song: &'a Song) -> &Path {
-        if let Some(o) = self.song_operations.iter().find(|o| std::ptr::eq(o.song, song)) {
+        if let Some(o) = self.song_operations.values().find(|o| std::ptr::eq(o.song, song)) {
             if let Some(p) = &o.new_path {
                 return p;
             }
@@ -52,8 +55,19 @@ impl<'a> Changes<'a> {
             self.dir_creations.push(DirCreation { path: output_dir.to_owned() })
         }
 
+        let mut release_dirs = BTreeMap::<&OsStr, Vec<&Song>>::new();
         for song in self.index.songs.iter() {
-            let op = self.song_operations.iter_mut().find(|o| std::ptr::eq(o.song, song));
+            let parent_dir = song.path.parent().unwrap();
+            match release_dirs.entry(parent_dir.as_os_str()) {
+                std::collections::btree_map::Entry::Occupied(occupied) => {
+                    occupied.into_mut().push(song);
+                }
+                std::collections::btree_map::Entry::Vacant(vacant) => {
+                    vacant.insert(vec![song]);
+                }
+            }
+
+            let op = self.song_operations.get_mut(&(song as *const Song));
             let tag_update = op.and_then(|op| op.tag_update.as_ref());
 
             let release_artists = tag_update
@@ -118,12 +132,12 @@ impl<'a> Changes<'a> {
 
         for image in self.index.images.iter() {
             let current_dir = image.parent().unwrap();
-            let mut new_song_dirs = self
-                .index
-                .songs
-                .iter()
-                .filter(|s| fast_path_eq(s.path.parent().unwrap(), current_dir))
-                .map(|s| self.new_song_path(s).parent().unwrap());
+            let Some(release_dir) = release_dirs.get(current_dir.as_os_str()) else {
+                continue;
+            };
+
+            let mut new_song_dirs =
+                release_dir.iter().map(|s| self.new_song_path(s).parent().unwrap());
 
             if let Some(n) = new_song_dirs.next() {
                 let new_song_dir = n;
@@ -134,7 +148,7 @@ impl<'a> Changes<'a> {
 
                 let mut all_equal = true;
                 for n in new_song_dirs {
-                    if n != new_song_dir {
+                    if !fast_path_eq(n, new_song_dir) {
                         all_equal = false;
                         break;
                     }
@@ -173,7 +187,7 @@ impl<'a> Changes<'a> {
         op_type: FileOpType,
         f: &mut impl FnMut(&SongOperation, Result<(), Box<dyn std::error::Error>>),
     ) {
-        for o in self.song_operations.iter() {
+        for o in self.song_operations.values() {
             let r = o.execute(op_type);
             f(o, r);
         }

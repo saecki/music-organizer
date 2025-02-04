@@ -19,6 +19,7 @@ lto = true
 [dependencies]
 clap = { version = "4.5", features = ["wrap_help", "cargo"] }
 clap_complete = "4.5"
+indexmap = "2.7.1"
 regex = "1.10.6"
 id3 = "1.16.0"
 mp4ameta = "0.11.0"

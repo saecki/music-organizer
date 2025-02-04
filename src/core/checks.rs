@@ -1,15 +1,17 @@
-use crate::{util, MusicIndex, Release, ReleaseArtists, SongOperation, Value};
+use indexmap::IndexMap;
+
+use crate::{util, MusicIndex, Release, ReleaseArtists, Song, SongOperation, Value};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Checks<'a> {
     pub index: &'a MusicIndex,
-    pub song_operations: Vec<SongOperation<'a>>,
+    pub song_operations: IndexMap<*const Song, SongOperation<'a>>,
     pub artists: Vec<ReleaseArtists<'a>>,
 }
 
 impl<'a> From<&'a MusicIndex> for Checks<'a> {
     fn from(index: &'a MusicIndex) -> Self {
-        let mut new = Self { index, song_operations: Vec::new(), artists: Vec::new() };
+        let mut new = Self { index, song_operations: IndexMap::new(), artists: Vec::new() };
         new.update_index();
         new
     }

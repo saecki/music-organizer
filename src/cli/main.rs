@@ -244,7 +244,7 @@ fn display_changes(changes: &Changes, args: &Args, dict: &Dict) {
         }
         if !changes.song_operations.is_empty() {
             print_subtitle(SUBTITLE_SONGS);
-            for (i, o) in changes.song_operations.iter().enumerate() {
+            for (i, o) in changes.song_operations.values().enumerate() {
                 println!(
                     "{} {}",
                     (i + 1).to_string().blue(),

@@ -1,22 +1,24 @@
+use indexmap::IndexMap;
+
 use crate::{Song, SongOperation, TagUpdate};
 
 pub fn update_song_op<'a>(
-    song_operations: &mut Vec<SongOperation<'a>>,
+    song_operations: &mut IndexMap<*const Song, SongOperation<'a>>,
     song: &'a Song,
     f: impl FnOnce(&mut SongOperation),
 ) {
-    match song_operations.iter_mut().find(|f| f.song == song) {
+    match song_operations.get_mut(&(song as *const Song)) {
         Some(o) => f(o),
         None => {
             let mut o = SongOperation::new(song);
             f(&mut o);
-            song_operations.push(o);
+            song_operations.insert(song, o);
         }
     }
 }
 
 pub fn update_tag<'a>(
-    song_operations: &mut Vec<SongOperation<'a>>,
+    song_operations: &mut IndexMap<*const Song, SongOperation<'a>>,
     song: &'a Song,
     f: impl FnOnce(&mut TagUpdate),
 ) {
