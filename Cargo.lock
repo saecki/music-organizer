@@ -326,7 +326,6 @@ dependencies = [
  "crossbeam-channel",
  "id3",
  "indexmap",
- "lazy_static",
  "metaflac",
  "mp4ameta",
  "regex",

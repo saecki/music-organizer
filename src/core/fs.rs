@@ -1,3 +1,4 @@
+use std::cell::LazyCell;
 use std::ffi::OsStr;
 use std::path::Path;
 use std::path::PathBuf;
@@ -106,13 +107,13 @@ impl From<bool> for FileOpType {
     }
 }
 
-lazy_static::lazy_static! {
-    static ref RE: Regex = Regex::new(r#"[<>:"/\\|?*]"#).unwrap();
+thread_local! {
+    static RE: LazyCell<Regex> = LazyCell::new(|| Regex::new(r#"[<>:"/\\|?*]"#).unwrap());
 }
 
 #[inline]
 pub fn valid_os_str_dots(str: &str) -> String {
-    let mut s = RE.replace_all(str, "").to_string();
+    let mut s = RE.with(|re| re.replace_all(str, "").to_string());
 
     if s.starts_with('.') {
         // This is safe because we know that the first byte has to be present and is character of 1 byte length.
@@ -130,7 +131,7 @@ pub fn valid_os_str_dots(str: &str) -> String {
 
 #[inline]
 pub fn valid_os_str(str: &str) -> String {
-    RE.replace_all(str, "").trim().to_string()
+    RE.with(|re| re.replace_all(str, "").trim().to_string())
 }
 
 #[inline]
