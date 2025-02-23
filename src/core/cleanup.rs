@@ -10,17 +10,14 @@ fn is_empty_dir(cleanup: &mut Cleanup, dir: &Path, f: &mut impl FnMut(&Path)) ->
     f(dir);
 
     if let Ok(r) = std::fs::read_dir(dir) {
-        let is_empty = r
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .map(|e| is_empty_dir(cleanup, &e.path(), f))
-            .reduce(|a, b| a && b)
-            .unwrap_or(true);
-
-        if is_empty {
-            cleanup.dir_deletions.push(DirDeletion { path: dir.to_owned() });
-            return true;
+        for e in r.into_iter().filter_map(|e| e.ok()) {
+            if !is_empty_dir(cleanup, &e.path(), f) {
+                return false;
+            }
         }
+
+        cleanup.dir_deletions.push(DirDeletion { path: dir.to_owned() });
+        return true;
     }
 
     false
