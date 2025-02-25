@@ -93,7 +93,15 @@ impl Metadata {
     }
 
     fn read_mp4(file: &mut File) -> Option<Self> {
-        let mut tag = mp4ameta::Tag::read_from(file).ok()?;
+        let cfg = mp4ameta::ReadConfig {
+            read_meta_items: true,
+            read_image_data: false,
+            read_chapter_list: false,
+            read_chapter_track: false,
+            read_audio_info: false,
+            ..Default::default()
+        };
+        let mut tag = mp4ameta::Tag::read_with(file, &cfg).ok()?;
         Some(Self {
             mode: Mode::read(file),
             track_number: tag.track_number(),
