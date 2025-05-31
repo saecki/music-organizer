@@ -49,11 +49,23 @@ impl<'a> Checks<'a> {
         }
     }
 
-    pub fn remove_embedded_artworks(&mut self) {
+    pub fn remove_embedded_artworks(&mut self, only_redundant: bool) {
         for song in self.index.songs.iter() {
-            if song.has_artwork {
-                util::update_tag(&mut self.song_operations, song, |t| t.artwork = Value::Remove);
+            if !song.has_artwork {
+                continue;
+            };
+
+            if only_redundant {
+                // FIXME: kinda hacky
+                let song_dir = song.path.parent().unwrap();
+                let external_cover =
+                    self.index.images.iter().any(|image_path| image_path.starts_with(song_dir));
+                if !external_cover {
+                    continue;
+                }
             }
+
+            util::update_tag(&mut self.song_operations, song, |t| t.artwork = Value::Remove);
         }
     }
 

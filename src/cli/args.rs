@@ -39,9 +39,17 @@ pub struct Args {
     pub assume_yes: bool,
     pub dry_run: bool,
     pub no_check: bool,
-    pub keep_embedded_artworks: bool,
+    pub embedded_artworks: EmbeddedArtworks,
     pub no_cleanup: bool,
     pub timings: bool,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq, clap::ValueEnum)]
+pub enum EmbeddedArtworks {
+    Keep,
+    #[default]
+    RemoveRedundant,
+    Remove,
 }
 
 pub fn parse_args() -> Args {
@@ -83,11 +91,13 @@ pub fn parse_args() -> Args {
                 .num_args(0),
         )
         .arg(
-            Arg::new("keep embedded artworks")
+            Arg::new("embedded artworks")
                 .short('e')
-                .long("keep-embedded-artworks")
-                .help("Keep embedded artworks")
-                .num_args(0),
+                .long("embedded-artworks")
+                .help("What to do with embedded artworks")
+                .num_args(1)
+                .value_parser(value_parser!(EmbeddedArtworks))
+                .default_value("remove-redundant"),
         )
         .arg(
             Arg::new("nocleanup")
@@ -179,7 +189,7 @@ pub fn parse_args() -> Args {
         },
         assume_yes: matches.get_flag("assume-yes"),
         no_check: matches.get_flag("nocheck"),
-        keep_embedded_artworks: matches.get_flag("keep embedded artworks"),
+        embedded_artworks: matches.get_one("embedded artworks").cloned().unwrap_or_default(),
         no_cleanup: matches.get_flag("nocleanup"),
         dry_run: matches.get_flag("dryrun"),
         timings: matches.get_flag("timings"),

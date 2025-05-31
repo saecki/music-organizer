@@ -3,7 +3,7 @@ use std::fmt::Write as _;
 use std::io::Write as _;
 use std::time::Instant;
 
-use crate::args::Args;
+use crate::args::{Args, EmbeddedArtworks};
 use crate::display::strip_dir;
 use crate::display::{
     ANSII_BLUE, ANSII_CLEAR, ANSII_CYAN_ON_BLACK, ANSII_GREEN, ANSII_GREEN_ON_BLACK,
@@ -198,9 +198,10 @@ fn display_checking(checks: &mut Checks, args: &Args) {
     let verbose = args.verbosity >= 2;
     print_title_verbose(verbose, TITLE_CHECKING);
 
-    if !args.keep_embedded_artworks {
+    if args.embedded_artworks != EmbeddedArtworks::Keep {
         print_verbose!(verbose, TITLE_CHECKING, "{ANSII_YELLOW}embedded artworks{ANSII_CLEAR}",);
-        checks.remove_embedded_artworks();
+        let only_redundant = args.embedded_artworks == EmbeddedArtworks::RemoveRedundant;
+        checks.remove_embedded_artworks(only_redundant);
     }
 
     print_verbose!(verbose, TITLE_CHECKING, "{ANSII_YELLOW}file permissions{ANSII_CLEAR}",);
