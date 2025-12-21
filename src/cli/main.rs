@@ -1,9 +1,10 @@
+use clap::{CommandFactory, Parser};
 use music_organizer::{Changes, Checks, Cleanup, FileOpType, MusicIndex, ReleaseArtists, Value};
 use std::fmt::Write as _;
 use std::io::Write as _;
 use std::time::Instant;
 
-use crate::args::{Args, EmbeddedArtworks};
+use crate::args::{Command, CompletionsCommand, EmbeddedArtworks, OrganizeCommand};
 use crate::display::strip_dir;
 use crate::display::{
     ANSII_BLUE, ANSII_CLEAR, ANSII_CYAN_ON_BLACK, ANSII_GREEN, ANSII_GREEN_ON_BLACK,
@@ -102,9 +103,23 @@ impl Timer {
 }
 
 fn main() {
-    let args = args::parse_args();
+    let args = args::Args::parse();
+
+    match args.command {
+        Command::Organize(command) => organize(command),
+        Command::Completions(command) => completions(command),
+    }
+}
+
+fn completions(args: CompletionsCommand) {
+    let mut stdout = std::io::stdout();
+    let mut app = args::Args::command();
+    clap_complete::generate(args.shell, &mut app, "music-organizer", &mut stdout)
+}
+
+fn organize(args: OrganizeCommand) {
     let dict = Dict {
-        op_type: match args.op_type {
+        op_type: match args.op_type() {
             FileOpType::Move => MOVE_TENSES,
             FileOpType::Copy => COPY_TENSES,
         },
@@ -126,7 +141,7 @@ fn main() {
     timer.time("checking");
 
     // changes
-    let changes = Changes::generate(checks, &args.output_dir);
+    let changes = Changes::generate(checks, args.output_dir());
     display_changes(&changes, &args, &dict);
     timer.time("changes");
 
@@ -170,7 +185,7 @@ fn main() {
     }
 }
 
-fn display_indexing(index: &mut MusicIndex, args: &Args) {
+fn display_indexing(index: &mut MusicIndex, args: &OrganizeCommand) {
     let verbose = args.verbosity >= 2;
     print_title_verbose(verbose, TITLE_INDEXING);
 
@@ -194,7 +209,7 @@ fn display_indexing(index: &mut MusicIndex, args: &Args) {
     println!();
 }
 
-fn display_checking(checks: &mut Checks, args: &Args) {
+fn display_checking(checks: &mut Checks, args: &OrganizeCommand) {
     let verbose = args.verbosity >= 2;
     print_title_verbose(verbose, TITLE_CHECKING);
 
@@ -220,7 +235,7 @@ fn display_checking(checks: &mut Checks, args: &Args) {
     println!();
 }
 
-fn display_changes(changes: &Changes, args: &Args, dict: &Dict) {
+fn display_changes(changes: &Changes, args: &OrganizeCommand, dict: &Dict) {
     if changes.is_empty() {
         let verbose = args.verbosity >= 2;
         print_title_verbose(verbose, TITLE_CHANGES);
@@ -251,7 +266,7 @@ fn display_changes(changes: &Changes, args: &Args, dict: &Dict) {
                     "{ANSII_BLUE}{n}{ANSII_CLEAR} {}",
                     display::SongOp(
                         &args.music_dir,
-                        &args.output_dir,
+                        args.output_dir(),
                         o,
                         dict.op_type.sim_pres,
                         dict.rename.sim_pres,
@@ -269,7 +284,7 @@ fn display_changes(changes: &Changes, args: &Args, dict: &Dict) {
                     "{ANSII_BLUE}{n}{ANSII_CLEAR} {}",
                     display::FileOp(
                         &args.music_dir,
-                        &args.output_dir,
+                        args.output_dir(),
                         f.old_path,
                         &f.new_path,
                         dict.op_type.sim_pres,
@@ -296,7 +311,7 @@ fn display_changes(changes: &Changes, args: &Args, dict: &Dict) {
     println!();
 }
 
-fn display_writing(changes: &Changes, args: &Args, dict: &Dict) {
+fn display_writing(changes: &Changes, args: &OrganizeCommand, dict: &Dict) {
     if args.dry_run {
         println!("skip writing dryrun...");
         return;
@@ -329,7 +344,7 @@ fn display_writing(changes: &Changes, args: &Args, dict: &Dict) {
     });
 
     let mut file_operation_idx = 0;
-    changes.execute_song_operations(args.op_type, &mut |o, r| {
+    changes.execute_song_operations(args.op_type(), &mut |o, r| {
         file_operation_idx += 1;
         match r {
             Ok(_) => {
@@ -339,7 +354,7 @@ fn display_writing(changes: &Changes, args: &Args, dict: &Dict) {
                     "{ANSII_BLUE}{file_operation_idx}{ANSII_CLEAR} {}",
                     display::SongOp(
                         &args.music_dir,
-                        &args.output_dir,
+                        args.output_dir(),
                         o,
                         dict.op_type.sim_past,
                         dict.rename.sim_past,
@@ -352,7 +367,7 @@ fn display_writing(changes: &Changes, args: &Args, dict: &Dict) {
                     "{ANSII_BLUE}{file_operation_idx}{ANSII_CLEAR} {ANSII_RED}error{ANSII_CLEAR} {}:\n{ANSII_RED}{e}{ANSII_CLEAR}",
                     display::SongOp(
                         &args.music_dir,
-                        &args.output_dir,
+                        args.output_dir(),
                         o,
                         dict.op_type.pres_prog,
                         dict.rename.pres_prog,
@@ -363,7 +378,7 @@ fn display_writing(changes: &Changes, args: &Args, dict: &Dict) {
         }
     });
 
-    changes.execute_file_operations(args.op_type, &mut |f, r| {
+    changes.execute_file_operations(args.op_type(), &mut |f, r| {
         file_operation_idx += 1;
         match r {
             Ok(_) => {
@@ -373,7 +388,7 @@ fn display_writing(changes: &Changes, args: &Args, dict: &Dict) {
                     "{ANSII_BLUE}{file_operation_idx}{ANSII_CLEAR} {}",
                     display::FileOp(
                         &args.music_dir,
-                        &args.output_dir,
+                        args.output_dir(),
                         f.old_path,
                         &f.new_path,
                         dict.op_type.sim_past,
@@ -386,7 +401,7 @@ fn display_writing(changes: &Changes, args: &Args, dict: &Dict) {
                     "{ANSII_BLUE}{file_operation_idx}{ANSII_CLEAR} {ANSII_RED}error{ANSII_CLEAR} {}:\n{ANSII_RED}{e}{ANSII_CLEAR}",
                     display::FileOp(
                         &args.music_dir,
-                        &args.output_dir,
+                        args.output_dir(),
                         f.old_path,
                         &f.new_path,
                         dict.op_type.pres_prog,
@@ -413,7 +428,7 @@ fn display_writing(changes: &Changes, args: &Args, dict: &Dict) {
     println!();
 }
 
-fn display_cleanup(cleanup: &mut Cleanup, args: &Args) {
+fn display_cleanup(cleanup: &mut Cleanup, args: &OrganizeCommand) {
     let verbose = args.verbosity >= 2;
     print_title_verbose(verbose, TITLE_CLEANUP);
 
@@ -439,7 +454,7 @@ fn display_cleanup(cleanup: &mut Cleanup, args: &Args) {
     println!();
 }
 
-fn display_deletions(cleanup: &Cleanup, args: &Args) {
+fn display_deletions(cleanup: &Cleanup, args: &OrganizeCommand) {
     if cleanup.is_empty() {
         let verbose = args.verbosity >= 2;
         print_title_verbose(verbose, TITLE_DELETIONS);
@@ -473,7 +488,7 @@ fn display_deletions(cleanup: &Cleanup, args: &Args) {
     }
 }
 
-fn display_cleaning(cleanup: &Cleanup, args: &Args) {
+fn display_cleaning(cleanup: &Cleanup, args: &OrganizeCommand) {
     if args.dry_run {
         println!("skip cleaning up dryrun...");
     } else {

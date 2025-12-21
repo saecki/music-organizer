@@ -1,47 +1,133 @@
-use clap::{crate_authors, crate_version, value_parser, Arg, ColorChoice, Command, ValueHint};
-use clap_complete::generate;
-use clap_complete::shells::{Bash, Elvish, Fish, PowerShell, Zsh};
+use clap::builder::TypedValueParser;
+use clap::{crate_authors, crate_version, value_parser, ColorChoice, Parser, Subcommand};
+use clap_complete::Shell;
 use music_organizer::FileOpType;
-use std::path::PathBuf;
-use std::str::FromStr;
+use std::path::{Path, PathBuf};
 
-const BIN_NAME: &str = "music-organizer";
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Shell {
-    Bash,
-    Elvish,
-    Fish,
-    Pwrsh,
-    Zsh,
+#[derive(Parser)]
+#[clap(
+    name = "music-organizer",
+    version = crate_version!(),
+    author = crate_authors!(),
+    color = ColorChoice::Auto,
+    about = "",
+)]
+pub struct Args {
+    #[command(subcommand)]
+    pub command: Command,
 }
 
-impl FromStr for Shell {
-    type Err = &'static str;
+#[derive(Subcommand)]
+#[command()]
+pub enum Command {
+    /// Moves/copies, renames and retags Music files using their metadata.
+    Organize(OrganizeCommand),
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "bash" => Ok(Shell::Bash),
-            "elvish" => Ok(Shell::Elvish),
-            "fish" => Ok(Shell::Fish),
-            "powershell" => Ok(Shell::Pwrsh),
-            "zsh" => Ok(Shell::Zsh),
-            _ => Err("Unknown shell"),
+    /// Generates a completion script for the specified shell.
+    Completions(CompletionsCommand),
+}
+
+#[derive(Parser)]
+pub struct OrganizeCommand {
+    /// The directory which will be searched for music files.
+    #[clap(
+        long = "music-dir",
+        short = 'm',
+        value_parser = music_dir_value_parser(),
+        default_value = "~/Music",
+    )]
+    pub music_dir: PathBuf,
+
+    /// The directory which the content will be written to.
+    #[clap(
+        long = "output-dir",
+        short = 'o',
+        value_parser = output_dir_value_parser(),
+    )]
+    pub output_dir: Option<PathBuf>,
+
+    /// Verbosity level of the output. 0 means least 2 means most verbose ouput.
+    #[clap(
+        long = "verbosity",
+        short = 'v',
+        value_name = "level",
+        value_parser = value_parser!(u8).range(0..=2),
+        default_value = "1",
+    )]
+    pub verbosity: u8,
+
+    /// Copy the files instead of moving.
+    #[clap(long = "copy", short = 'c', requires = "output-dir")]
+    pub copy: bool,
+
+    /// Assumes yes as a answer for questions.
+    #[clap(long = "assume-yes", short = 'y')]
+    pub assume_yes: bool,
+
+    /// Only check files and print actions don't change anything.
+    #[clap(long = "dry-run", short = 'd', conflicts_with = "assume_yes")]
+    pub dry_run: bool,
+
+    /// Don't check for inconsistencies.
+    #[clap(long = "nocheck", short = 'n')]
+    pub no_check: bool,
+
+    /// What to do with embedded artworks
+    #[clap(long = "embedded-artworks", short = 'e', default_value = "remove-redundant")]
+    pub embedded_artworks: EmbeddedArtworks,
+
+    /// Don't remove empty directories.
+    #[clap(long = "nocleanup")]
+    pub no_cleanup: bool,
+
+    /// Prints timing information
+    #[clap(long = "timings", short = 't')]
+    pub timings: bool,
+}
+
+impl OrganizeCommand {
+    pub fn op_type(&self) -> FileOpType {
+        match self.copy {
+            true => FileOpType::Copy,
+            false => FileOpType::Move,
         }
+    }
+
+    pub fn output_dir(&self) -> &Path {
+        self.output_dir.as_deref().unwrap_or(&self.music_dir)
     }
 }
 
-pub struct Args {
-    pub music_dir: PathBuf,
-    pub output_dir: PathBuf,
-    pub verbosity: u8,
-    pub op_type: FileOpType,
-    pub assume_yes: bool,
-    pub dry_run: bool,
-    pub no_check: bool,
-    pub embedded_artworks: EmbeddedArtworks,
-    pub no_cleanup: bool,
-    pub timings: bool,
+fn music_dir_value_parser() -> impl TypedValueParser<Value = PathBuf> {
+    clap::builder::StringValueParser::new().try_map(|value| {
+        let expanded = shellexpand::tilde(&value);
+        let path = PathBuf::from(expanded.into_owned());
+
+        if !path.exists() {
+            return Err(format!("`music-dir` doesn't exist: `{}`", path.display()));
+        }
+        if !path.is_dir() {
+            return Err(format!("`music-dir` path isn't a directory: `{}`", path.display()));
+        }
+
+        Ok(path)
+    })
+}
+
+fn output_dir_value_parser() -> impl TypedValueParser<Value = PathBuf> {
+    clap::builder::StringValueParser::new().try_map(|value| {
+        let expanded = shellexpand::tilde(&value);
+        let path = PathBuf::from(expanded.into_owned());
+
+        if path.exists() && !path.is_dir() {
+            return Err(format!(
+                "`output-dir` path exists but isn't a directory: `{}`",
+                path.display()
+            ));
+        }
+
+        Ok(path)
+    })
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, clap::ValueEnum)]
@@ -52,146 +138,9 @@ pub enum EmbeddedArtworks {
     Remove,
 }
 
-pub fn parse_args() -> Args {
-    let mut app = Command::new("music organizer")
-        .color(ColorChoice::Auto)
-        .version(crate_version!())
-        .author(crate_authors!())
-        .about("Moves/copies, renames and retags Music files using their metadata.")
-        .arg(
-            Arg::new("music-dir")
-                .short('m')
-                .long("music-dir")
-                .help("The directory which will be searched for music files")
-                .num_args(1)
-                .default_value("~/Music")
-                .value_hint(ValueHint::DirPath),
-        )
-        .arg(
-            Arg::new("output-dir")
-                .short('o')
-                .long("output-dir")
-                .help("The directory which the content will be written to")
-                .num_args(1)
-                .value_hint(ValueHint::DirPath),
-        )
-        .arg(
-            Arg::new("copy")
-                .short('c')
-                .long("copy")
-                .help("Copy the files instead of moving")
-                .num_args(0)
-                .requires("output-dir"),
-        )
-        .arg(
-            Arg::new("nocheck")
-                .short('n')
-                .long("nocheck")
-                .help("Don't check for inconsistencies")
-                .num_args(0),
-        )
-        .arg(
-            Arg::new("embedded artworks")
-                .short('e')
-                .long("embedded-artworks")
-                .help("What to do with embedded artworks")
-                .num_args(1)
-                .value_parser(value_parser!(EmbeddedArtworks))
-                .default_value("remove-redundant"),
-        )
-        .arg(
-            Arg::new("nocleanup")
-                .long("nocleanup")
-                .help("Don't remove empty directories")
-                .num_args(0),
-        )
-        .arg(
-            Arg::new("assume-yes")
-                .short('y')
-                .long("assume-yes")
-                .help("Assumes yes as a answer for questions")
-                .num_args(0),
-        )
-        .arg(
-            Arg::new("dryrun")
-                .short('d')
-                .long("dryrun")
-                .help("Only check files don't change anything")
-                .num_args(0)
-                .conflicts_with("assume-yes"),
-        )
-        .arg(
-            Arg::new("verbosity")
-                .short('v')
-                .long("verbosity")
-                .value_name("level")
-                .help("Verbosity level of the output. 0 means least 2 means most verbose ouput.")
-                .value_parser(value_parser!(u8).range(0..=2))
-                .default_value("1"),
-        )
-        .arg(
-            Arg::new("generate-completion")
-                .short('g')
-                .long("generate-completion")
-                .value_name("shell")
-                .help("Generates a completion script for the specified shell")
-                .conflicts_with("music-dir")
-                .value_parser(value_parser!(Shell)),
-        )
-        .arg(
-            Arg::new("timings")
-                .short('t')
-                .long("timings")
-                .help("Prints timing information")
-                .num_args(0),
-        );
-
-    let matches = app.clone().get_matches();
-
-    let generate_completion = matches.get_one("generate-completion");
-    if let Some(shell) = generate_completion {
-        let mut stdout = std::io::stdout();
-        match shell {
-            Shell::Bash => generate(Bash, &mut app, BIN_NAME, &mut stdout),
-            Shell::Elvish => generate(Elvish, &mut app, BIN_NAME, &mut stdout),
-            Shell::Fish => generate(Fish, &mut app, BIN_NAME, &mut stdout),
-            Shell::Zsh => generate(Zsh, &mut app, BIN_NAME, &mut stdout),
-            Shell::Pwrsh => generate(PowerShell, &mut app, BIN_NAME, &mut stdout),
-        }
-        std::process::exit(0);
-    }
-
-    let music_dir = {
-        let dir = shellexpand::tilde(matches.get_one::<String>("music-dir").unwrap());
-        let path = PathBuf::from(dir.as_ref());
-        if !path.exists() {
-            println!("Not a valid music dir path: {}", dir);
-            std::process::exit(1)
-        }
-        path
-    };
-
-    let output_dir = match matches.get_one::<String>("output-dir") {
-        Some(s) => {
-            let dir = shellexpand::tilde(s);
-            PathBuf::from(dir.as_ref())
-        }
-        None => music_dir.clone(),
-    };
-
-    Args {
-        music_dir,
-        output_dir,
-        verbosity: *matches.get_one::<u8>("verbosity").unwrap(),
-        op_type: match matches.get_flag("copy") {
-            true => FileOpType::Copy,
-            false => FileOpType::Move,
-        },
-        assume_yes: matches.get_flag("assume-yes"),
-        no_check: matches.get_flag("nocheck"),
-        embedded_artworks: matches.get_one("embedded artworks").cloned().unwrap_or_default(),
-        no_cleanup: matches.get_flag("nocleanup"),
-        dry_run: matches.get_flag("dryrun"),
-        timings: matches.get_flag("timings"),
-    }
+#[derive(Parser)]
+pub struct CompletionsCommand {
+    /// The shell for which the completions are generated.
+    #[clap(value_enum)]
+    pub shell: Shell,
 }
