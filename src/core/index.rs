@@ -1,20 +1,20 @@
 use crossbeam_channel::Sender;
 use std::path::{Path, PathBuf};
 
-use crate::fs::{is_image_extension, is_song_extension};
+use crate::fs::is_image_extension;
 use crate::thread::{worker_pool, Msg, Worker, WorkerState};
-use crate::{Metadata, Song};
+use crate::{AudioFormat, Metadata, Song};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MusicIndex {
-    pub music_dir: PathBuf,
+pub struct MusicIndex<'a> {
+    pub music_dir: &'a Path,
     pub songs: Vec<Song>,
     pub unknown: Vec<PathBuf>,
     pub images: Vec<PathBuf>,
 }
 
-impl MusicIndex {
-    pub fn new(music_dir: PathBuf) -> Self {
+impl<'a> MusicIndex<'a> {
+    pub fn new(music_dir: &'a Path) -> Self {
         Self { music_dir, songs: Vec::new(), unknown: Vec::new(), images: Vec::new() }
     }
 
@@ -25,7 +25,7 @@ impl MusicIndex {
         let num_workers = 8;
         worker_pool(
             num_workers,
-            self.music_dir.to_path_buf(),
+            [self.music_dir.to_path_buf()],
             |_| MusicIndexBuilder { item_sender: item_sender.clone() },
             || {
                 while let Ok(Msg::Work(i)) = item_receiver.recv() {
@@ -89,16 +89,16 @@ impl MusicIndexBuilder {
             None => return,
         };
 
-        if is_song_extension(extension) {
-            let m = Metadata::read_from(&p);
-            self.add_song(p, m);
+        if let Some(format) = AudioFormat::from_extension(extension) {
+            let m = Metadata::read_from(&p, format);
+            self.add_song(p, m.unwrap_or_default(), format);
         } else if is_image_extension(extension) {
             let _ = self.item_sender.send(Msg::Work(Item::Image(p)));
         }
     }
 
-    fn add_song(&mut self, p: PathBuf, m: Metadata) {
-        let Some(release_artists) = m.release_artists() else {
+    fn add_song(&mut self, p: PathBuf, m: Metadata, format: AudioFormat) {
+        let Some(release_artists) = m.album_artists() else {
             self.send_item(Item::Unknown(p));
             return;
         };
@@ -108,7 +108,7 @@ impl MusicIndexBuilder {
             return;
         };
 
-        let Some(release) = &m.release else {
+        let Some(release) = &m.album else {
             self.send_item(Item::Unknown(p));
             return;
         };
@@ -119,15 +119,17 @@ impl MusicIndexBuilder {
         };
 
         self.send_item(Item::Song(Song {
+            format,
             mode: m.mode,
             track_number: m.track_number,
             total_tracks: m.total_tracks,
             disc_number: m.disc_number,
             total_discs: m.total_discs,
-            release_artists: release_artists.to_owned(),
+            album_artists: release_artists.to_owned(),
             artists: song_artists.to_owned(),
-            release: release.to_owned(),
+            album: release.to_owned(),
             title: title.to_owned(),
+            genres: m.genres,
             has_artwork: m.has_artwork,
             path: p,
         }));

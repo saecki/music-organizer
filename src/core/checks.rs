@@ -1,16 +1,16 @@
 use indexmap::IndexMap;
 
-use crate::{util, MusicIndex, Release, ReleaseArtists, Song, SongOperation, Value};
+use crate::{util, MusicIndex, Album, ReleaseArtists, Song, SongOperation, Value};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Checks<'a> {
-    pub index: &'a MusicIndex,
+    pub index: &'a MusicIndex<'a>,
     pub song_operations: IndexMap<*const Song, SongOperation<'a>>,
     pub artists: Vec<ReleaseArtists<'a>>,
 }
 
-impl<'a> From<&'a MusicIndex> for Checks<'a> {
-    fn from(index: &'a MusicIndex) -> Self {
+impl<'a> From<&'a MusicIndex<'a>> for Checks<'a> {
+    fn from(index: &'a MusicIndex<'a>) -> Self {
         let mut new = Self { index, song_operations: IndexMap::new(), artists: Vec::new() };
         new.update_index();
         new
@@ -25,16 +25,16 @@ impl<'a> Checks<'a> {
             let mut added = false;
 
             for a in self.artists.iter_mut() {
-                if a.names == s.release_artists {
+                if a.names == s.album_artists {
                     for r in a.releases.iter_mut() {
-                        if r.name == s.release {
+                        if r.name == s.album {
                             r.songs.push(s);
                             added = true;
                         }
                     }
 
                     if !added {
-                        a.releases.push(Release { name: &s.release, songs: vec![s] });
+                        a.releases.push(Album { name: &s.album, songs: vec![s] });
                         added = true;
                     }
                 }
@@ -42,8 +42,8 @@ impl<'a> Checks<'a> {
 
             if !added {
                 self.artists.push(ReleaseArtists {
-                    names: &s.release_artists,
-                    releases: vec![Release { name: &s.release, songs: vec![s] }],
+                    names: &s.album_artists,
+                    releases: vec![Album { name: &s.album, songs: vec![s] }],
                 });
             }
         }

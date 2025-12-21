@@ -1,32 +1,74 @@
+use std::ffi::OsStr;
+use std::fmt::Display;
 use std::fs::{File, Permissions};
 use std::path::{Path, PathBuf};
 
 use id3::TagLike;
+use opusmeta::LowercaseString;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ReleaseArtists<'a> {
     pub names: &'a [String],
-    pub releases: Vec<Release<'a>>,
+    pub releases: Vec<Album<'a>>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Release<'a> {
+pub struct Album<'a> {
     pub name: &'a str,
     pub songs: Vec<&'a Song>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AudioFormat {
+    Flac,
+    M4a,
+    Mp3,
+    Opus,
+}
+
+impl AudioFormat {
+    pub fn from_extension(extension: &OsStr) -> Option<Self> {
+        let str = extension.to_str()?;
+        let fmt = match str {
+            "m4a" => AudioFormat::M4a,
+            "mp3" => AudioFormat::Mp3,
+            "flac" => AudioFormat::Flac,
+            "opus" => AudioFormat::Opus,
+            _ => return None,
+        };
+        Some(fmt)
+    }
+
+    pub fn extension(&self) -> &'static str {
+        match self {
+            AudioFormat::Flac => "flac",
+            AudioFormat::M4a => "m4a",
+            AudioFormat::Mp3 => "mp3",
+            AudioFormat::Opus => "opus",
+        }
+    }
+}
+
+impl Display for AudioFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.extension())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Song {
+    pub format: AudioFormat,
     pub path: PathBuf,
     pub mode: Option<Mode>,
     pub track_number: Option<u16>,
     pub total_tracks: Option<u16>,
     pub disc_number: Option<u16>,
     pub total_discs: Option<u16>,
-    pub release_artists: Vec<String>,
+    pub album_artists: Vec<String>,
     pub artists: Vec<String>,
-    pub release: String,
+    pub album: String,
     pub title: String,
+    pub genres: Vec<String>,
     pub has_artwork: bool,
 }
 
@@ -38,61 +80,46 @@ pub struct Metadata {
     pub disc_number: Option<u16>,
     pub total_discs: Option<u16>,
     pub artists: Vec<String>,
-    pub release_artists: Vec<String>,
-    pub release: Option<String>,
+    pub album_artists: Vec<String>,
+    pub album: Option<String>,
     pub title: Option<String>,
+    pub genres: Vec<String>,
     pub has_artwork: bool,
 }
 
 impl Metadata {
-    pub fn read_from(path: &Path) -> Self {
-        let Ok(mut file) = File::open(path) else { return Self::default() };
-        match path.extension().unwrap().to_str().unwrap() {
-            "mp3" => {
-                if let Some(meta) = Self::read_mp3(&file) {
-                    return meta;
-                }
-            }
-            "m4a" => {
-                if let Some(meta) = Self::read_mp4(&mut file) {
-                    return meta;
-                }
-            }
-            "flac" => {
-                if let Some(meta) = Self::read_flac(&mut file) {
-                    return meta;
-                }
-            }
-            _ => (),
-        }
-
-        Self::default()
+    pub fn read_from(path: &Path, format: AudioFormat) -> anyhow::Result<Self> {
+        let mut file = File::open(path)?;
+        let mode = Mode::read(&file)?;
+        let meta = match format {
+            AudioFormat::Flac => Self::read_flac(&mut file),
+            AudioFormat::M4a => Self::read_mp4(&mut file),
+            AudioFormat::Mp3 => Self::read_mp3(&mut file),
+            AudioFormat::Opus => Self::read_opus(&mut file),
+        }?;
+        Ok(Self { mode: Some(mode), ..meta })
     }
 
-    fn read_mp3(file: &File) -> Option<Self> {
-        let tag = id3::Tag::read_from2(file).ok()?;
+    fn read_flac(file: &mut File) -> anyhow::Result<Self> {
+        let tag = metaflac::Tag::read_from(file)?;
+        let Some(vorbis) = tag.vorbis_comments() else { return Ok(Self::default()) };
 
-        Some(Self {
-            mode: Mode::read(file),
-            track_number: zero_none(tag.track().map(|u| u as u16)),
-            total_tracks: zero_none(tag.total_tracks().map(|u| u as u16)),
-            disc_number: zero_none(tag.disc().map(|u| u as u16)),
-            total_discs: zero_none(tag.total_discs().map(|u| u as u16)),
-            artists: tag
-                .artist()
-                .map(|s| s.split('\u{0}').map(|s| s.to_string()).collect())
-                .unwrap_or_default(),
-            release_artists: tag
-                .album_artist()
-                .map(|s| s.split('\u{0}').map(|s| s.to_string()).collect())
-                .unwrap_or_default(),
-            release: tag.album().map(|s| s.to_string()),
-            title: tag.title().map(|s| s.to_string()),
+        Ok(Self {
+            mode: None,
+            track_number: zero_none(vorbis.track().map(|u| u as u16)),
+            total_tracks: zero_none(vorbis.total_tracks().map(|u| u as u16)),
+            disc_number: zero_none(vorbis.get("DISCNUMBER").and_then(|d| d[0].parse().ok())),
+            total_discs: zero_none(vorbis.get("TOTALDISCS").and_then(|d| d[0].parse().ok())),
+            artists: vorbis.artist().map_or_else(Vec::new, |v| v.clone()),
+            album_artists: vorbis.album_artist().map_or_else(Vec::new, |v| v.clone()),
+            album: vorbis.album().map(|v| v[0].clone()),
+            title: vorbis.title().map(|v| v[0].clone()),
+            genres: vorbis.genre().map_or_else(Vec::new, |v| v.clone()),
             has_artwork: tag.pictures().count() > 0,
         })
     }
 
-    fn read_mp4(file: &mut File) -> Option<Self> {
+    fn read_mp4(file: &mut File) -> anyhow::Result<Self> {
         let cfg = mp4ameta::ReadConfig {
             read_meta_items: true,
             read_image_data: false,
@@ -101,42 +128,75 @@ impl Metadata {
             read_audio_info: false,
             ..Default::default()
         };
-        let mut tag = mp4ameta::Tag::read_with(file, &cfg).ok()?;
-        Some(Self {
-            mode: Mode::read(file),
+        let mut tag = mp4ameta::Tag::read_with(file, &cfg)?;
+        Ok(Self {
+            mode: None,
             track_number: tag.track_number(),
             total_tracks: tag.total_tracks(),
             disc_number: tag.disc_number(),
             total_discs: tag.total_discs(),
             artists: tag.take_artists().collect(),
-            release_artists: tag.take_album_artists().collect(),
-            release: tag.take_album(),
+            album_artists: tag.take_album_artists().collect(),
+            album: tag.take_album(),
             title: tag.take_title(),
+            genres: tag.take_genres().collect(),
             has_artwork: tag.artwork().is_some(),
         })
     }
 
-    fn read_flac(file: &mut File) -> Option<Self> {
-        let tag = metaflac::Tag::read_from(file).ok()?;
-        let vorbis = tag.vorbis_comments()?;
+    fn read_mp3(file: &File) -> anyhow::Result<Self> {
+        let tag = id3::Tag::read_from2(file)?;
 
-        Some(Self {
-            mode: Mode::read(file),
-            track_number: zero_none(vorbis.track().map(|u| u as u16)),
-            total_tracks: zero_none(vorbis.total_tracks().map(|u| u as u16)),
-            disc_number: zero_none(vorbis.get("DISCNUMBER").and_then(|d| d[0].parse().ok())),
-            total_discs: zero_none(vorbis.get("TOTALDISCS").and_then(|d| d[0].parse().ok())),
-            artists: vorbis.artist().map_or_else(Vec::new, |v| v.to_owned()),
-            release_artists: vorbis.album_artist().map_or_else(Vec::new, |v| v.to_owned()),
-            release: vorbis.album().map(|v| v[0].clone()),
-            title: vorbis.title().map(|v| v[0].clone()),
+        fn nul_separated(s: &str) -> Vec<String> {
+            s.split('\u{0}').map(|s| s.to_string()).collect()
+        }
+
+        Ok(Self {
+            mode: None,
+            track_number: zero_none(tag.track().map(|u| u as u16)),
+            total_tracks: zero_none(tag.total_tracks().map(|u| u as u16)),
+            disc_number: zero_none(tag.disc().map(|u| u as u16)),
+            total_discs: zero_none(tag.total_discs().map(|u| u as u16)),
+            artists: tag.artist().map(nul_separated).unwrap_or_default(),
+            album_artists: tag.album_artist().map(nul_separated).unwrap_or_default(),
+            album: tag.album().map(|s| s.to_string()),
+            title: tag.title().map(|s| s.to_string()),
+            genres: tag.genre().map(nul_separated).unwrap_or_default(),
             has_artwork: tag.pictures().count() > 0,
         })
     }
 
-    pub fn release_artists(&self) -> Option<&[String]> {
-        if !self.release_artists.is_empty() {
-            Some(&self.release_artists)
+    fn read_opus(file: &File) -> anyhow::Result<Self> {
+        let tag = opusmeta::Tag::read_from(file)?;
+
+        fn key(s: &str) -> LowercaseString {
+            LowercaseString::new(s)
+        }
+
+        Ok(Self {
+            mode: None,
+            track_number: tag.get_one(&key("tracknumber")).and_then(|s| s.parse().ok()),
+            total_tracks: tag
+                .get_one(&key("totaltracks"))
+                .or_else(|| tag.get_one(&key("tracktotal")))
+                .and_then(|s| s.parse().ok()),
+            disc_number: tag.get_one(&key("discnumber")).and_then(|s| s.parse().ok()),
+            total_discs: tag
+                .get_one(&key("totaldiscs"))
+                .or_else(|| tag.get_one(&key("disctotal")))
+                .and_then(|s| s.parse().ok()),
+            artists: tag.get(&key("artist")).map_or_else(Vec::new, |v| v.clone()),
+            album_artists: tag.get(&key("albumartist")).map_or_else(Vec::new, |v| v.clone()),
+            album: tag.get_one(&key("album")).map(|s| s.clone()),
+            title: tag.get_one(&key("title")).map(|s| s.clone()),
+            genres: tag.get(&key("genre")).map_or_else(Vec::new, |v| v.clone()),
+            has_artwork: tag.iter_pictures().and_then(|mut iter| iter.next()).is_some(),
+        })
+    }
+
+    pub fn album_artists(&self) -> Option<&[String]> {
+        if !self.album_artists.is_empty() {
+            Some(&self.album_artists)
         } else if !self.artists.is_empty() {
             Some(&self.artists)
         } else {
@@ -147,8 +207,8 @@ impl Metadata {
     pub fn song_artists(&self) -> Option<&[String]> {
         if !self.artists.is_empty() {
             Some(&self.artists)
-        } else if !self.release_artists.is_empty() {
-            Some(&self.release_artists)
+        } else if !self.album_artists.is_empty() {
+            Some(&self.album_artists)
         } else {
             None
         }
@@ -190,14 +250,14 @@ impl std::fmt::Display for Mode {
 }
 
 impl Mode {
-    pub fn read(file: &File) -> Option<Mode> {
+    pub fn read(file: &File) -> std::io::Result<Mode> {
         use std::os::unix::fs::MetadataExt;
 
-        let meta = file.metadata().ok()?;
-        Some(Mode(meta.mode()))
+        let meta = file.metadata()?;
+        Ok(Mode(meta.mode()))
     }
 
-    pub fn write(&self, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn write(&self, path: &Path) -> anyhow::Result<()> {
         use std::os::unix::fs::PermissionsExt;
 
         let file = File::open(path)?;

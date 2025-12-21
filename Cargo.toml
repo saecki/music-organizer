@@ -12,7 +12,8 @@ path = "src/core/lib.rs"
 name = "music-organizer"
 path = "src/cli/main.rs"
 
-[profile.release]
+[profile.release-lto]
+inherits = "release"
 codegen-units = 1
 lto = true
 
@@ -21,9 +22,13 @@ clap = { version = "4.5", features = ["wrap_help", "cargo", "derive"] }
 clap_complete = "4.5"
 indexmap = "2.9.0"
 regex = "1.11.1"
-id3 = "1.16.2"
-mp4ameta = "0.13.0"
-metaflac = "0.2.8"
 shellexpand = "3.1.1"
 crossbeam-channel = "0.5.15"
 crossbeam-deque = "0.8.6"
+ffmpeg = { package = "ffmpeg-next", version = "8.0.0" }
+anyhow = "1.0"
+
+id3 = "1.16.2"
+mp4ameta = "0.13.0"
+metaflac = "0.2.8"
+opusmeta = "2.0.1"

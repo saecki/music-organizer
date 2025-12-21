@@ -139,18 +139,6 @@ pub fn fast_path_eq(l: &Path, r: &Path) -> bool {
     l.as_os_str() == r.as_os_str()
 }
 
-const SONG_EXTENSIONS: [&str; 3] = ["m4a", "mp3", "flac"];
-#[inline]
-pub fn is_song_extension(s: &OsStr) -> bool {
-    for e in &SONG_EXTENSIONS {
-        if s.eq(*e) {
-            return true;
-        }
-    }
-
-    false
-}
-
 const IMAGE_EXTENSIONS: [&str; 3] = ["png", "jpg", "jpeg"];
 #[inline]
 pub fn is_image_extension(s: &OsStr) -> bool {

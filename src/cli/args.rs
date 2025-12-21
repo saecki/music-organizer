@@ -24,6 +24,9 @@ pub enum Command {
     Organize(OrganizeCommand),
 
     /// Generates a completion script for the specified shell.
+    Transcode(TranscodeCommand),
+
+    /// Generates a completion script for the specified shell.
     Completions(CompletionsCommand),
 }
 
@@ -136,6 +139,40 @@ pub enum EmbeddedArtworks {
     #[default]
     RemoveRedundant,
     Remove,
+}
+
+#[derive(Parser)]
+pub struct TranscodeCommand {
+    /// The directory which will be searched for music files.
+    #[clap(
+        long = "music-dir",
+        short = 'm',
+        value_parser = music_dir_value_parser(),
+        default_value = "~/Music",
+    )]
+    pub music_dir: PathBuf,
+
+    /// The directory which the content will be written to.
+    #[clap(
+        long = "output-dir",
+        short = 'o',
+        value_parser = output_dir_value_parser(),
+    )]
+    pub output_dir: PathBuf,
+
+    /// Verbosity level of the output. 0 means least 2 means most verbose ouput.
+    #[clap(
+        long = "verbosity",
+        short = 'v',
+        value_name = "level",
+        value_parser = value_parser!(u8).range(0..=2),
+        default_value = "1",
+    )]
+    pub verbosity: u8,
+
+    /// Prints timing information
+    #[clap(long = "timings", short = 't')]
+    pub timings: bool,
 }
 
 #[derive(Parser)]

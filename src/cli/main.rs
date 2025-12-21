@@ -1,10 +1,15 @@
 use clap::{CommandFactory, Parser};
-use music_organizer::{Changes, Checks, Cleanup, FileOpType, MusicIndex, ReleaseArtists, Value};
+use music_organizer::{
+    Changes, Checks, Cleanup, FileOpType, MusicIndex, ReleaseArtists, Transcoder, Value,
+};
 use std::fmt::Write as _;
 use std::io::Write as _;
+use std::path::Path;
 use std::time::Instant;
 
-use crate::args::{Command, CompletionsCommand, EmbeddedArtworks, OrganizeCommand};
+use crate::args::{
+    Command, CompletionsCommand, EmbeddedArtworks, OrganizeCommand, TranscodeCommand,
+};
 use crate::display::strip_dir;
 use crate::display::{
     ANSII_BLUE, ANSII_CLEAR, ANSII_CYAN_ON_BLACK, ANSII_GREEN, ANSII_GREEN_ON_BLACK,
@@ -15,7 +20,7 @@ mod args;
 mod display;
 
 const VERBOSE: u8 = 2;
-const MAX_TITLE_WITH: usize = 9;
+const MAX_TITLE_WITH: usize = 11;
 const TITLE_INDEXING: &str = "INDEXING";
 const TITLE_CHECKING: &str = "CHECKING";
 const TITLE_CHANGES: &str = "CHANGES";
@@ -23,6 +28,7 @@ const TITLE_WRITING: &str = "WRITING";
 const TITLE_CLEANUP: &str = "CLEANUP";
 const TITLE_DELETIONS: &str = "DELETIONS";
 const TITLE_CLEANING: &str = "CLEANING";
+const TITLE_TRANSCODING: &str = "TRANSCODING";
 
 const MAX_SUBTITLE_WITH: usize = 6;
 const SUBTITLE_DIRS: &str = "dirs";
@@ -107,6 +113,7 @@ fn main() {
 
     match args.command {
         Command::Organize(command) => organize(command),
+        Command::Transcode(command) => transcode(command),
         Command::Completions(command) => completions(command),
     }
 }
@@ -115,6 +122,75 @@ fn completions(args: CompletionsCommand) {
     let mut stdout = std::io::stdout();
     let mut app = args::Args::command();
     clap_complete::generate(args.shell, &mut app, "music-organizer", &mut stdout)
+}
+
+fn transcode(args: TranscodeCommand) {
+    let mut timer = Timer::new();
+
+    // indexing
+    let mut index = MusicIndex::new(&args.music_dir);
+    display_indexing(&mut index, args.verbosity);
+    timer.time("indexing");
+
+    // transcode
+    let transcoder = Transcoder::from(&index);
+    display_transcoding(&transcoder, &args.output_dir, args.verbosity);
+    timer.time("transcode");
+
+    if args.timings {
+        timer.display();
+    }
+}
+
+fn display_transcoding(transcoder: &Transcoder, output_dir: &Path, verbosity: u8) {
+    let verbose = verbosity >= 2;
+    print_title_verbose(verbose, TITLE_TRANSCODING);
+
+    let mut i = 0;
+    let mut num_transcoded = 0;
+    let mut num_copied = 0;
+    transcoder.transcode_songs(output_dir, &mut |op, res| {
+        i += 1;
+        match op.format {
+            Some(_) => num_transcoded += 1,
+            None => num_copied += 1,
+        }
+
+        let new_path = op.new_path.display();
+        let (simp_past, pres_prog) = match op.format {
+            Some(_) => ("transcoded", "transcoding"),
+            None => ("copied", "copying"),
+        };
+
+        match &res {
+            Ok(()) => {
+                print_verbose!(
+                    verbose,
+                    TITLE_TRANSCODING,
+                    "{ANSII_BLUE}{i}{ANSII_CLEAR} {simp_past} {ANSII_YELLOW}{new_path}{ANSII_YELLOW}",
+                );
+            }
+            Err(e) => {
+                print_verbose!(
+                    false,
+                    TITLE_TRANSCODING,
+                    "{ANSII_BLUE}{i}{ANSII_CLEAR} {ANSII_RED}error{ANSII_CLEAR} \
+                     {pres_prog} {ANSII_YELLOW}{new_path}{ANSII_YELLOW}: \
+                     {ANSII_RED}{e}{ANSII_CLEAR}\n",
+                );
+            }
+        }
+    });
+
+    if !verbose {
+        print_verbose!(
+            verbose,
+            TITLE_TRANSCODING,
+            "{ANSII_BLUE}{num_transcoded} {ANSII_GREEN}transcoded {ANSII_BLUE}{num_copied} {ANSII_GREEN}copied{ANSII_CLEAR}",
+        );
+    }
+
+    println!();
 }
 
 fn organize(args: OrganizeCommand) {
@@ -129,8 +205,8 @@ fn organize(args: OrganizeCommand) {
     let mut timer = Timer::new();
 
     // indexing
-    let mut index = MusicIndex::new(args.music_dir.clone());
-    display_indexing(&mut index, &args);
+    let mut index = MusicIndex::new(&args.music_dir);
+    display_indexing(&mut index, args.verbosity);
     timer.time("indexing");
 
     // checking
@@ -185,8 +261,9 @@ fn organize(args: OrganizeCommand) {
     }
 }
 
-fn display_indexing(index: &mut MusicIndex, args: &OrganizeCommand) {
-    let verbose = args.verbosity >= 2;
+fn display_indexing(index: &mut MusicIndex, verbosity: u8) {
+    let music_dir = index.music_dir;
+    let verbose = verbosity >= 2;
     print_title_verbose(verbose, TITLE_INDEXING);
 
     let mut i = 0;
@@ -196,7 +273,7 @@ fn display_indexing(index: &mut MusicIndex, args: &OrganizeCommand) {
             verbose,
             TITLE_INDEXING,
             "{ANSII_BLUE}{i} {ANSII_YELLOW}{}{ANSII_CLEAR}",
-            strip_dir(p, &args.music_dir)
+            strip_dir(p, &music_dir)
         );
     });
     if !verbose {

@@ -11,7 +11,7 @@ use crate::{
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Changes<'a> {
-    pub index: &'a MusicIndex,
+    pub index: &'a MusicIndex<'a>,
     pub dir_creations: Vec<DirCreation>,
     pub song_operations: IndexMap<*const Song, SongOperation<'a>>,
     pub file_operations: Vec<FileOperation<'a>>,
@@ -72,11 +72,11 @@ impl<'a> Changes<'a> {
 
             let release_artists = tag_update
                 .and_then(|t| t.release_artists.slice_value())
-                .unwrap_or(song.release_artists.as_slice())
+                .unwrap_or(song.album_artists.as_slice())
                 .join(", ");
             let release_artists = valid_os_str_dots(&release_artists);
 
-            let release = tag_update.and_then(|t| t.release.str_value()).unwrap_or(&song.release);
+            let release = tag_update.and_then(|t| t.release.str_value()).unwrap_or(&song.album);
             let release = valid_os_str_dots(release);
 
             let artists = tag_update

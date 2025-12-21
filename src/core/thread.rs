@@ -11,7 +11,7 @@ pub trait WorkerState<W>: Sized {
 
 pub fn worker_pool<S, W>(
     num_workers: usize,
-    init_work: W,
+    init_work: impl IntoIterator<Item = W>,
     mut build_worker: impl FnMut(usize) -> S,
     wait: impl FnOnce(),
 ) where
@@ -19,7 +19,9 @@ pub fn worker_pool<S, W>(
     W: Send,
 {
     let injector = crossbeam_deque::Injector::new();
-    injector.push(Msg::Work(init_work));
+    for work in init_work {
+        injector.push(Msg::Work(work));
+    }
 
     let alive_workers = AtomicUsize::new(num_workers);
     let mut stealers = Vec::with_capacity(num_workers);

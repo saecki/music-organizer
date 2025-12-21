@@ -126,9 +126,9 @@ fn format_tag_update(
     u: &TagUpdate,
     _verbosity: u8,
 ) -> std::fmt::Result {
-    format_string_vec(f, "release artists", &s.release_artists, &u.release_artists)?;
+    format_string_vec(f, "release artists", &s.album_artists, &u.release_artists)?;
     format_string_vec(f, "artists", &s.artists, &u.artists)?;
-    format_string(f, "release", &s.release, &u.release)?;
+    format_string(f, "release", &s.album, &u.release)?;
     format_string(f, "title", &s.title, &u.title)?;
     format_u16(f, "track number", s.track_number, u.track_number)?;
     format_u16(f, "total tracks", s.total_tracks, u.total_tracks)?;

@@ -5,6 +5,7 @@ mod fs;
 mod index;
 mod meta;
 mod thread;
+mod transcode;
 mod update;
 mod util;
 
@@ -13,6 +14,7 @@ pub use checks::Checks;
 pub use cleanup::Cleanup;
 pub use fs::{DirCreation, FileOpType, FileOperation, SongOperation};
 pub use index::MusicIndex;
-pub use meta::{Metadata, Release, ReleaseArtists, Song};
+pub use meta::{AudioFormat,Metadata, Album, ReleaseArtists, Song};
+pub use transcode::Transcoder;
 pub use update::{TagUpdate, Value};
 pub use util::*;

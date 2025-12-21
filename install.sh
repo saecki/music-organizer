@@ -1,6 +1,6 @@
 #!/bin/sh
 
-cargo install --path .
+cargo install --profile=release-lto --path .
 
 case "$SHELL" in
     *zsh)
