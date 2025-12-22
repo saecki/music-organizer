@@ -4,6 +4,7 @@ mod cleanup;
 mod fs;
 mod index;
 mod meta;
+mod thread;
 mod update;
 mod util;
 

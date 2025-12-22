@@ -1,12 +1,11 @@
+use crossbeam_channel::Sender;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
-
-use crossbeam_channel::{Receiver, Sender};
 
 use crate::fs::{is_image_extension, is_song_extension};
+use crate::thread::{worker_pool, Msg, Worker, WorkerState};
 use crate::{Metadata, Song};
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MusicIndex {
     pub music_dir: PathBuf,
     pub songs: Vec<Song>,
@@ -14,10 +13,40 @@ pub struct MusicIndex {
     pub images: Vec<PathBuf>,
 }
 
-struct MusicIndexBuilder {
-    dir_receiver: Receiver<PathBuf>,
-    dir_sender: Sender<PathBuf>,
-    item_sender: Sender<Item>,
+impl MusicIndex {
+    pub fn new(music_dir: PathBuf) -> Self {
+        Self { music_dir, songs: Vec::new(), unknown: Vec::new(), images: Vec::new() }
+    }
+
+    pub fn read(&mut self, f: &mut impl FnMut(&Path)) {
+        let (item_sender, item_receiver) = crossbeam_channel::unbounded();
+
+        // 8 threads seems to be the sweat spot on my machine :)
+        let num_workers = 8;
+        worker_pool(
+            num_workers,
+            self.music_dir.to_path_buf(),
+            |_| MusicIndexBuilder { item_sender: item_sender.clone() },
+            || {
+                while let Ok(Msg::Work(i)) = item_receiver.recv() {
+                    match i {
+                        Item::Song(s) => {
+                            f(&s.path);
+                            self.songs.push(s);
+                        }
+                        Item::Unknown(p) => {
+                            f(&p);
+                            self.unknown.push(p);
+                        }
+                        Item::Image(p) => {
+                            f(&p);
+                            self.images.push(p);
+                        }
+                    }
+                }
+            },
+        );
+    }
 }
 
 enum Item {
@@ -26,29 +55,34 @@ enum Item {
     Image(PathBuf),
 }
 
-impl MusicIndexBuilder {
-    fn start(&mut self) {
-        while let Ok(p) = self.dir_receiver.recv_timeout(Duration::from_millis(100)) {
-            self.read(p);
-        }
-    }
+struct MusicIndexBuilder {
+    item_sender: Sender<Msg<Item>>,
+}
 
-    fn read(&mut self, dir: PathBuf) {
-        if let Ok(r) = std::fs::read_dir(dir) {
-            for e in r.into_iter().filter_map(|e| e.ok()) {
-                let p = e.path();
+impl WorkerState<PathBuf> for MusicIndexBuilder {
+    fn work(worker: &mut Worker<Self, PathBuf>, dir: PathBuf) {
+        let Ok(r) = std::fs::read_dir(dir) else {
+            return;
+        };
 
-                if p.is_file() {
-                    self.add_item(p);
-                } else if p.is_dir() {
-                    if let Err(e) = self.dir_sender.send(p) {
-                        println!("Error indexing subdir: {:?}", e);
-                    }
-                }
+        // Read subdirectory
+        for e in r.into_iter().filter_map(|e| e.ok()) {
+            let p = e.path();
+
+            if p.is_file() {
+                worker.state.add_item(p);
+            } else if p.is_dir() {
+                worker.push_work(p);
             }
         }
     }
 
+    fn stop(&mut self) {
+        self.item_sender.send(Msg::Stop).unwrap();
+    }
+}
+
+impl MusicIndexBuilder {
     fn add_item(&mut self, p: PathBuf) {
         let extension = match p.extension() {
             Some(e) => e,
@@ -59,32 +93,32 @@ impl MusicIndexBuilder {
             let m = Metadata::read_from(&p);
             self.add_song(p, m);
         } else if is_image_extension(extension) {
-            let _ = self.item_sender.send(Item::Image(p));
+            let _ = self.item_sender.send(Msg::Work(Item::Image(p)));
         }
     }
 
     fn add_song(&mut self, p: PathBuf, m: Metadata) {
         let Some(release_artists) = m.release_artists() else {
-            let _ = self.item_sender.send(Item::Unknown(p));
+            self.send_item(Item::Unknown(p));
             return;
         };
 
         let Some(song_artists) = m.song_artists() else {
-            let _ = self.item_sender.send(Item::Unknown(p));
+            self.send_item(Item::Unknown(p));
             return;
         };
 
         let Some(release) = &m.release else {
-            let _ = self.item_sender.send(Item::Unknown(p));
+            self.send_item(Item::Unknown(p));
             return;
         };
 
         let Some(title) = &m.title else {
-            let _ = self.item_sender.send(Item::Unknown(p));
+            self.send_item(Item::Unknown(p));
             return;
         };
 
-        let _ = self.item_sender.send(Item::Song(Song {
+        self.send_item(Item::Song(Song {
             mode: m.mode,
             track_number: m.track_number,
             total_tracks: m.total_tracks,
@@ -98,59 +132,8 @@ impl MusicIndexBuilder {
             path: p,
         }));
     }
-}
 
-impl MusicIndex {
-    pub fn read(&mut self, f: &mut impl FnMut(&Path)) {
-        let (item_sender, item_receiver) = crossbeam_channel::unbounded();
-        let (dir_sender, dir_receiver) = crossbeam_channel::unbounded();
-
-        let mut threads = Vec::new();
-        for _ in 0..8 {
-            let mut builder = MusicIndexBuilder {
-                dir_receiver: dir_receiver.clone(),
-                dir_sender: dir_sender.clone(),
-                item_sender: item_sender.clone(),
-            };
-            let t = std::thread::spawn(move || {
-                builder.start();
-            });
-            threads.push(t);
-        }
-
-        if let Err(e) = dir_sender.send(self.music_dir.clone()) {
-            println!("Error indexing music dir: {:?}", e);
-        }
-
-        drop(item_sender);
-
-        while let Ok(i) = item_receiver.recv() {
-            match i {
-                Item::Song(s) => {
-                    f(&s.path);
-                    self.songs.push(s);
-                }
-                Item::Unknown(p) => {
-                    f(&p);
-                    self.unknown.push(p);
-                }
-                Item::Image(p) => {
-                    f(&p);
-                    self.images.push(p);
-                }
-            }
-        }
-
-        for t in threads {
-            if let Err(e) = t.join() {
-                println!("Error joining index builder thread: {:?}", e);
-            }
-        }
-    }
-}
-
-impl From<PathBuf> for MusicIndex {
-    fn from(music_dir: PathBuf) -> Self {
-        Self { music_dir, ..Default::default() }
+    fn send_item(&self, item: Item) {
+        self.item_sender.send(Msg::Work(item)).unwrap();
     }
 }

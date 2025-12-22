@@ -129,7 +129,7 @@ fn organize(args: OrganizeCommand) {
     let mut timer = Timer::new();
 
     // indexing
-    let mut index = MusicIndex::from(args.music_dir.clone());
+    let mut index = MusicIndex::new(args.music_dir.clone());
     display_indexing(&mut index, &args);
     timer.time("indexing");
 
