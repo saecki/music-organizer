@@ -4,7 +4,6 @@ use std::fs::{File, Permissions};
 use std::path::{Path, PathBuf};
 
 use id3::TagLike;
-use opusmeta::LowercaseString;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ReleaseArtists<'a> {
@@ -168,28 +167,23 @@ impl Metadata {
 
     fn read_opus(file: &File) -> anyhow::Result<Self> {
         let tag = opusmeta::Tag::read_from(file)?;
-
-        fn key(s: &str) -> LowercaseString {
-            LowercaseString::new(s)
-        }
-
         Ok(Self {
             mode: None,
-            track_number: tag.get_one(&key("tracknumber")).and_then(|s| s.parse().ok()),
+            track_number: tag.get_one(&opus::TRACKNUMBER).and_then(|s| s.parse().ok()),
             total_tracks: tag
-                .get_one(&key("totaltracks"))
-                .or_else(|| tag.get_one(&key("tracktotal")))
+                .get_one(&opus::TOTALTRACKS)
+                .or_else(|| tag.get_one(&opus::TRACKTOTAL))
                 .and_then(|s| s.parse().ok()),
-            disc_number: tag.get_one(&key("discnumber")).and_then(|s| s.parse().ok()),
+            disc_number: tag.get_one(&opus::DISCNUMBER).and_then(|s| s.parse().ok()),
             total_discs: tag
-                .get_one(&key("totaldiscs"))
-                .or_else(|| tag.get_one(&key("disctotal")))
+                .get_one(&opus::TOTALDISCS)
+                .or_else(|| tag.get_one(&opus::DISCTOTAL))
                 .and_then(|s| s.parse().ok()),
-            artists: tag.get(&key("artist")).map_or_else(Vec::new, |v| v.clone()),
-            album_artists: tag.get(&key("albumartist")).map_or_else(Vec::new, |v| v.clone()),
-            album: tag.get_one(&key("album")).map(|s| s.clone()),
-            title: tag.get_one(&key("title")).map(|s| s.clone()),
-            genres: tag.get(&key("genre")).map_or_else(Vec::new, |v| v.clone()),
+            artists: tag.get(&opus::ARTIST).map_or_else(Vec::new, |v| v.clone()),
+            album_artists: tag.get(&opus::ALBUMARTIST).map_or_else(Vec::new, |v| v.clone()),
+            album: tag.get_one(&opus::ALBUM).map(|s| s.clone()),
+            title: tag.get_one(&opus::TITLE).map(|s| s.clone()),
+            genres: tag.get(&opus::GENRE).map_or_else(Vec::new, |v| v.clone()),
             has_artwork: tag.iter_pictures().and_then(|mut iter| iter.next()).is_some(),
         })
     }
@@ -280,4 +274,27 @@ pub fn zero_none(n: Option<u16>) -> Option<u16> {
         0 => None,
         _ => Some(n),
     })
+}
+
+mod opus {
+    use opusmeta::LowercaseString;
+
+    macro_rules! key {
+        ($name:ident = $str:literal) => {
+            pub const $name: LowercaseString<'static> =
+                LowercaseString::try_from_str($str).unwrap();
+        };
+    }
+
+    key!(TRACKNUMBER = "tracknumber");
+    key!(TOTALTRACKS = "totaltracks");
+    key!(TRACKTOTAL = "tracktotal");
+    key!(DISCNUMBER = "discnumber");
+    key!(TOTALDISCS = "totaldiscs");
+    key!(DISCTOTAL = "disctotal");
+    key!(ARTIST = "artist");
+    key!(ALBUMARTIST = "albumartist");
+    key!(ALBUM = "album");
+    key!(TITLE = "title");
+    key!(GENRE = "genre");
 }

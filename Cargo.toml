@@ -31,4 +31,4 @@ anyhow = "1.0"
 id3 = "1.16.2"
 mp4ameta = "0.13.0"
 metaflac = "0.2.8"
-opusmeta = "2.0.1"
+opusmeta = { git = "https://github.com/karx1/opusmeta", rev = "54ea8e9" }
