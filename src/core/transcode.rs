@@ -12,40 +12,24 @@ use crate::{AudioFormat, MusicIndex, Song};
 const TRANSCODE_BIT_RATE_TARGET: usize = 256_000;
 const TRANSCODE_BIT_RATE_MAX: usize = 320_000;
 
-pub struct Transcoder<'a> {
-    pub index: &'a MusicIndex<'a>,
-}
+pub fn transcode_songs(
+    index: &MusicIndex,
+    output_dir: &Path,
+    f: &mut impl FnMut(TranscodeOp, anyhow::Result<()>),
+) {
+    let (item_sender, item_receiver) = crossbeam_channel::unbounded();
 
-impl<'a> From<&'a MusicIndex<'a>> for Transcoder<'a> {
-    fn from(index: &'a MusicIndex<'a>) -> Self {
-        Self { index }
-    }
-}
-
-impl Transcoder<'_> {
-    pub fn transcode_songs(
-        &self,
-        output_dir: &Path,
-        f: &mut impl FnMut(TranscodeOp, anyhow::Result<()>),
-    ) {
-        let (item_sender, item_receiver) = crossbeam_channel::unbounded();
-
-        let num_workers = std::thread::available_parallelism().unwrap().get().max(2) - 1;
-        worker_pool(
-            num_workers,
-            self.index.songs.iter(),
-            |_| TrancodeWorker {
-                sender: item_sender.clone(),
-                music_dir: self.index.music_dir,
-                output_dir,
-            },
-            || {
-                while let Ok(Msg::Work((op, res))) = item_receiver.recv() {
-                    f(op, res);
-                }
-            },
-        );
-    }
+    let num_workers = std::thread::available_parallelism().unwrap().get().max(2) - 1;
+    worker_pool(
+        num_workers,
+        index.songs.iter(),
+        |_| TrancodeWorker { sender: item_sender.clone(), music_dir: index.music_dir, output_dir },
+        || {
+            while let Ok(Msg::Work((op, res))) = item_receiver.recv() {
+                f(op, res);
+            }
+        },
+    );
 }
 
 pub struct TranscodeOp<'a> {
@@ -103,7 +87,7 @@ impl<'a> WorkerState<&'a Song> for TrancodeWorker<'a> {
             new_path.set_extension(format.extension());
         }
 
-        // TODO: compute changes beforehand
+        // TODO: Compute changes beforehand and display them.
         if new_path.exists() {
             return;
         }
@@ -126,7 +110,9 @@ fn execute_transcode_op(op: &TranscodeOp) -> anyhow::Result<()> {
 
     match op.format {
         Some(format) => {
+            // FIXME: Write into buffer and write metadata in memory.
             transcode_song(op.song, &op.new_path, format)?;
+            op.song.write_metadata_to(&op.new_path, format)?;
         }
         None => {
             std::fs::copy(&op.song.path, &op.new_path)?;
@@ -135,7 +121,6 @@ fn execute_transcode_op(op: &TranscodeOp) -> anyhow::Result<()> {
     Ok(())
 }
 
-// TODO: manually write metadata.
 fn transcode_song(song: &Song, new_path: &Path, format: AudioFormat) -> anyhow::Result<()> {
     static INIT_FFMPEG: LazyLock<()> = LazyLock::new(|| {
         ffmpeg::log::set_level(ffmpeg::log::Level::Warning);

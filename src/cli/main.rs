@@ -1,7 +1,5 @@
 use clap::{CommandFactory, Parser};
-use music_organizer::{
-    Changes, Checks, Cleanup, FileOpType, MusicIndex, ReleaseArtists, Transcoder, Value,
-};
+use music_organizer::{Changes, Checks, Cleanup, FileOpType, MusicIndex, ReleaseArtists, Value};
 use std::fmt::Write as _;
 use std::io::Write as _;
 use std::path::Path;
@@ -85,6 +83,7 @@ struct Timer {
     start: Instant,
     timings: Vec<(Instant, String)>,
 }
+
 impl Timer {
     fn new() -> Self {
         Self { start: Instant::now(), timings: Vec::new() }
@@ -133,8 +132,7 @@ fn transcode(args: TranscodeCommand) {
     timer.time("indexing");
 
     // transcode
-    let transcoder = Transcoder::from(&index);
-    display_transcoding(&transcoder, &args.output_dir, args.verbosity);
+    display_transcoding(&index, &args.output_dir, args.verbosity);
     timer.time("transcode");
 
     if args.timings {
@@ -142,14 +140,14 @@ fn transcode(args: TranscodeCommand) {
     }
 }
 
-fn display_transcoding(transcoder: &Transcoder, output_dir: &Path, verbosity: u8) {
+fn display_transcoding(index: &MusicIndex, output_dir: &Path, verbosity: u8) {
     let verbose = verbosity >= 2;
     print_title_verbose(verbose, TITLE_TRANSCODING);
 
     let mut i = 0;
     let mut num_transcoded = 0;
     let mut num_copied = 0;
-    transcoder.transcode_songs(output_dir, &mut |op, res| {
+    music_organizer::transcode_songs(index, output_dir, &mut |op, res| {
         i += 1;
         match op.format {
             Some(_) => num_transcoded += 1,
@@ -170,13 +168,13 @@ fn display_transcoding(transcoder: &Transcoder, output_dir: &Path, verbosity: u8
                     "{ANSII_BLUE}{i}{ANSII_CLEAR} {simp_past} {ANSII_YELLOW}{new_path}{ANSII_YELLOW}",
                 );
             }
-            Err(e) => {
+            Err(err) => {
                 print_verbose!(
                     false,
                     TITLE_TRANSCODING,
                     "{ANSII_BLUE}{i}{ANSII_CLEAR} {ANSII_RED}error{ANSII_CLEAR} \
                      {pres_prog} {ANSII_YELLOW}{new_path}{ANSII_YELLOW}: \
-                     {ANSII_RED}{e}{ANSII_CLEAR}\n",
+                     {ANSII_RED}{err:#}{ANSII_CLEAR}\n",
                 );
             }
         }

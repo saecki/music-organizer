@@ -477,8 +477,7 @@ dependencies = [
 [[package]]
 name = "mp4ameta"
 version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "453e991b2efe96c288cbc2d03a19e353504294559ecb6c03067fff5bd824616d"
+source = "git+https://github.com/Saecki/rust-mp4ameta?rev=0c5dd7c#0c5dd7ce5063e60dac6389b47ffa7bc07c5e592b"
 
 [[package]]
 name = "music-organizer"

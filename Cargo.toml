@@ -29,6 +29,6 @@ ffmpeg = { package = "ffmpeg-next", version = "8.0.0" }
 anyhow = "1.0"
 
 id3 = "1.16.2"
-mp4ameta = "0.13.0"
+mp4ameta = { git = "https://github.com/Saecki/rust-mp4ameta", rev = "0c5dd7c" }
 metaflac = "0.2.8"
 opusmeta = { git = "https://github.com/karx1/opusmeta", rev = "54ea8e9" }
