@@ -25,10 +25,18 @@ regex = "1.11.1"
 shellexpand = "3.1.1"
 crossbeam-channel = "0.5.15"
 crossbeam-deque = "0.8.6"
-ffmpeg = { package = "ffmpeg-next", version = "8.0.0" }
 anyhow = "1.0"
 
+# Audio metadata
 id3 = "1.16.2"
-mp4ameta = { git = "https://github.com/Saecki/rust-mp4ameta", rev = "0c5dd7c" }
+mp4ameta = { git = "https://github.com/Saecki/rust-mp4ameta", rev = "a1087f5" }
 metaflac = "0.2.8"
 opusmeta = { git = "https://github.com/karx1/opusmeta", rev = "54ea8e9" }
+
+# Transcoding to opus
+symphonia = { version = "0.5.5", default-features = false, features = ["flac"] }
+rubato = { git = "https://github.com/HEnquist/rubato", rev = "fb96613" }
+audioadapter = "2.0.0"
+audioadapter-buffers = "2.0.0"
+audioadapter-sample = "2.0.0"
+opusenc = { git = "https://github.com/Saecki/opusenc-rs", rev = "5fce28a" }

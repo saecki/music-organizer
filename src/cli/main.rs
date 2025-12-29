@@ -135,6 +135,24 @@ fn transcode(args: TranscodeCommand) {
     display_transcoding(&index, &args.output_dir, args.verbosity);
     timer.time("transcode");
 
+    // FIXME: Clean this up.
+    for image_path in index.images.iter() {
+        let sub_path = image_path
+            .strip_prefix(index.music_dir)
+            .expect("All songs should be located inside the `music-dir`");
+        let new_path = args.output_dir.join(sub_path);
+
+        if new_path.exists() {
+            continue;
+        }
+
+        if let Some(parent) = new_path.parent() {
+            _ = std::fs::create_dir_all(parent);
+        }
+
+        _ = std::fs::copy(image_path, new_path);
+    }
+
     if args.timings {
         timer.display();
     }

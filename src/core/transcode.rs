@@ -1,16 +1,20 @@
+use std::ffi::CString;
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
-use std::sync::LazyLock;
 
 use anyhow::{bail, Context};
 use crossbeam_channel::Sender;
-use ffmpeg::{codec, filter, format, frame, media};
+use opusmeta::LowercaseString;
+use rubato::Resampler;
+use symphonia::core::audio::{Channels as SymphoniaChannels, SampleBuffer};
+use symphonia::core::codecs::DecoderOptions;
+use symphonia::core::formats::FormatOptions;
+use symphonia::core::io::{MediaSourceStream, MediaSourceStreamOptions};
+use symphonia::core::meta::MetadataOptions;
+use symphonia::core::probe::Hint;
 
 use crate::thread::{worker_pool, Msg, WorkerState};
-use crate::{AudioFormat, MusicIndex, Song};
-
-/// 256 kbit/s
-const TRANSCODE_BIT_RATE_TARGET: usize = 256_000;
-const TRANSCODE_BIT_RATE_MAX: usize = 320_000;
+use crate::{meta, AudioFormat, MusicIndex, Song};
 
 pub fn transcode_songs(
     index: &MusicIndex,
@@ -35,33 +39,34 @@ pub fn transcode_songs(
 pub struct TranscodeOp<'a> {
     pub new_path: PathBuf,
     pub song: &'a Song,
-    /// The format in which the song will be transcoded.
-    pub format: Option<AudioFormat>,
+    pub format: Option<TranscodeFormat>,
 }
 
-impl AudioFormat {
-    fn codec_id(&self) -> ffmpeg::codec::Id {
-        match self {
-            AudioFormat::Flac => ffmpeg::codec::Id::FLAC,
-            AudioFormat::M4a => ffmpeg::codec::Id::AAC,
-            AudioFormat::Mp3 => ffmpeg::codec::Id::MP3,
-            AudioFormat::Opus => ffmpeg::codec::Id::OPUS,
-        }
-    }
+/// The target format for transcoding songs.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum TranscodeFormat {
+    Opus,
+}
 
-    fn rate(&self) -> u32 {
+impl TranscodeFormat {
+    pub fn extension(&self) -> &'static str {
         match self {
-            AudioFormat::Flac => 44_100,
-            AudioFormat::M4a => 44_100,
-            AudioFormat::Mp3 => 44_100,
-            AudioFormat::Opus => 48_000,
+            TranscodeFormat::Opus => "opus",
         }
     }
 }
 
-fn determine_transcode_format(song: &Song) -> Option<AudioFormat> {
+impl From<TranscodeFormat> for AudioFormat {
+    fn from(value: TranscodeFormat) -> Self {
+        match value {
+            TranscodeFormat::Opus => AudioFormat::Opus,
+        }
+    }
+}
+
+fn determine_transcode_format(song: &Song) -> Option<TranscodeFormat> {
     match song.format {
-        AudioFormat::Flac => Some(AudioFormat::Opus),
+        AudioFormat::Flac => Some(TranscodeFormat::Opus),
         AudioFormat::M4a => None,
         AudioFormat::Mp3 => None,
         AudioFormat::Opus => None,
@@ -110,9 +115,8 @@ fn execute_transcode_op(op: &TranscodeOp) -> anyhow::Result<()> {
 
     match op.format {
         Some(format) => {
-            // FIXME: Write into buffer and write metadata in memory.
-            transcode_song(op.song, &op.new_path, format)?;
-            op.song.write_metadata_to(&op.new_path, format)?;
+            let data = transcode_song(op.song, format)?;
+            std::fs::write(&op.new_path, &data)?;
         }
         None => {
             std::fs::copy(&op.song.path, &op.new_path)?;
@@ -121,219 +125,220 @@ fn execute_transcode_op(op: &TranscodeOp) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn transcode_song(song: &Song, new_path: &Path, format: AudioFormat) -> anyhow::Result<()> {
-    static INIT_FFMPEG: LazyLock<()> = LazyLock::new(|| {
-        ffmpeg::log::set_level(ffmpeg::log::Level::Warning);
-        ffmpeg::init().unwrap();
-    });
-    LazyLock::force(&INIT_FFMPEG);
-
-    let mut ictx = format::input(&song.path).context("error opening input file")?;
-    let mut octx = format::output(&new_path).context("error opening output file")?;
-    let mut transcoder =
-        transcoder(&mut ictx, &mut octx, format).context("error building transcoder")?;
-
-    octx.set_metadata(ictx.metadata().to_owned());
-    octx.write_header().context("error writing header")?;
-
-    for (stream, mut packet) in ictx.packets() {
-        if stream.index() == transcoder.stream {
-            packet.rescale_ts(stream.time_base(), transcoder.in_time_base);
-            transcoder.send_packet_to_decoder(&packet)?;
-            transcoder.receive_and_process_decoded_frames(&mut octx)?;
-        }
+/// Trancodes a song by using:
+/// 1. symphonia for demuxing/decoding
+/// 2. rubato for resampling to 48kHz from most likely 44.1kHz (in flac, aac, mp3, etc.)
+/// 3. libopusenc to encode an ogg/opus file
+fn transcode_song(song: &Song, format: TranscodeFormat) -> anyhow::Result<Vec<u8>> {
+    let mut all_samples = Vec::new();
+    let (rate, channels) = decode(&song.path, &mut all_samples)?;
+    match format {
+        TranscodeFormat::Opus => transcode_to_opus(song, rate, channels, &all_samples),
     }
-
-    transcoder.send_eof_to_decoder()?;
-    transcoder.receive_and_process_decoded_frames(&mut octx)?;
-
-    transcoder.flush_filter()?;
-    transcoder.get_and_process_filtered_frames(&mut octx)?;
-
-    transcoder.send_eof_to_encoder()?;
-    transcoder.receive_and_process_encoded_packets(&mut octx)?;
-
-    octx.write_trailer()?;
-
-    Ok(())
 }
 
-fn filter(
-    format: AudioFormat,
-    decoder: &codec::decoder::Audio,
-    encoder: &codec::encoder::Audio,
-) -> Result<filter::Graph, ffmpeg::Error> {
-    let mut filter = filter::Graph::new();
+#[derive(Clone, Copy, Debug)]
+enum Channels {
+    Mono = 1,
+    Stereo = 2,
+}
 
-    let args = format!(
-        "time_base={}:sample_rate={}:sample_fmt={}:channel_layout=0x{:x}",
-        decoder.time_base(),
-        decoder.rate(),
-        decoder.format().name(),
-        decoder.channel_layout().bits()
-    );
+impl Channels {
+    fn count(self) -> usize {
+        self as usize
+    }
+}
 
-    filter.add(&filter::find("abuffer").unwrap(), "in", &args)?;
-    filter.add(&filter::find("abuffersink").unwrap(), "out", "")?;
+fn decode(path: &Path, all_samples: &mut Vec<f32>) -> anyhow::Result<(u32, Channels)> {
+    let codecs = symphonia::default::get_codecs();
+    let probe = symphonia::default::get_probe();
 
+    let raw_data = std::fs::read(path)?;
+    let source = Cursor::new(raw_data);
+    let stream = MediaSourceStream::new(Box::new(source), MediaSourceStreamOptions::default());
+    let probe_result = probe
+        .format(&Hint::new(), stream, &FormatOptions::default(), &MetadataOptions::default())
+        .context("unsupported format")?;
+    let mut format_reader = probe_result.format;
+
+    // TODO: Maybe filter out other tracks?
+    let [track] = format_reader.tracks() else { bail!("expected exactly one audio track") };
+    let track_id = track.id;
+    // TODO: Check the performance implications of the `verify` flag.
+    let mut decoder = codecs
+        .make(&track.codec_params, &DecoderOptions { verify: true })
+        .context("unsupported codec")?;
+
+    let audio_buf = loop {
+        let packet = format_reader.next_packet()?;
+        if packet.track_id() != track_id {
+            continue;
+        }
+
+        // TODO: Check if we need to be a little more lenient here.
+        // Intentionally skip over packets that couldn't be decoded.
+        // Err(err @ SymphoniaError::DecodeError(_)) => continue,
+        let audio_buf = decoder.decode(&packet)?;
+
+        break audio_buf;
+    };
+
+    let spec = *audio_buf.spec();
+    const STEREO_CHANNELS: SymphoniaChannels =
+        SymphoniaChannels::FRONT_LEFT.union(SymphoniaChannels::FRONT_RIGHT);
+    let channels = match spec.channels {
+        c if c.count() == 1 => Channels::Mono,
+        STEREO_CHANNELS => Channels::Stereo,
+        layout => bail!("expected mono or stereo channel layout, found {layout:?}"),
+    };
+
+    let duration = audio_buf.capacity() as u64;
+    let mut sample_buf = SampleBuffer::<f32>::new(duration, spec);
+
+    sample_buf.copy_interleaved_ref(audio_buf);
+    all_samples.extend_from_slice(sample_buf.samples());
+
+    while let Ok(packet) = format_reader.next_packet() {
+        if packet.track_id() != track_id {
+            continue;
+        }
+
+        // TODO: Check if we need to be a little more lenient here.
+        // Intentionally skip over packets that couldn't be decoded.
+        // Err(err @ SymphoniaError::DecodeError(_)) => continue,
+        let audio_buf = decoder.decode(&packet)?;
+
+        sample_buf.copy_interleaved_ref(audio_buf);
+        all_samples.extend_from_slice(sample_buf.samples());
+    }
+
+    Ok((spec.rate, channels))
+}
+
+fn transcode_to_opus(
+    song: &Song,
+    sample_rate: u32,
+    channels: Channels,
+    in_samples: &[f32],
+) -> anyhow::Result<Vec<u8>> {
+    // Opus only supports sample rates of 8, 12, 16, 24 and 48kHz
+    const OPUS_SAMPLE_RATE: usize = 48_000;
+
+    let resampled = resample::<OPUS_SAMPLE_RATE>(sample_rate, channels, in_samples)
+        .context("error resampling")?;
+
+    // Build vorbis comments.
+    let comments = {
+        // Add audio metadata.
+        let mut comments = opusenc::Comments::create();
+        fn add_vorbis<V: ToString>(
+            comments: &mut opusenc::Comments,
+            key: &LowercaseString,
+            value: Option<V>,
+        ) -> anyhow::Result<()> {
+            if let Some(value) = value {
+                let key = CString::new(key.to_string().into_bytes()).unwrap();
+                comments.add(key, value.to_string())?;
+            }
+            Ok(())
+        }
+        add_vorbis(&mut comments, &meta::opus::TRACKNUMBER, song.track_number)?;
+        add_vorbis(&mut comments, &meta::opus::TOTALTRACKS, song.total_tracks)?;
+        add_vorbis(&mut comments, &meta::opus::DISCNUMBER, song.disc_number)?;
+        add_vorbis(&mut comments, &meta::opus::TOTALDISCS, song.total_discs)?;
+        for artist in song.artists.iter() {
+            add_vorbis(&mut comments, &meta::opus::ARTIST, Some(artist))?;
+        }
+        for artist in song.album_artists.iter() {
+            add_vorbis(&mut comments, &meta::opus::ALBUMARTIST, Some(artist))?;
+        }
+        add_vorbis(&mut comments, &meta::opus::ALBUM, Some(&song.album))?;
+        add_vorbis(&mut comments, &meta::opus::TITLE, Some(&song.title))?;
+        for genre in song.genres.iter() {
+            add_vorbis(&mut comments, &meta::opus::GENRE, Some(genre))?;
+        }
+        if song.has_artwork {
+            let image = meta::Image::read_from(&song.path, song.format)?;
+            comments.add_picture_from_memory(
+                &image.data,
+                opusenc::PictureType::FrontCover,
+                Option::<Vec<u8>>::None,
+            )?;
+        }
+        comments
+    };
+
+    const OPUS_BITRATE: i32 = 256_000;
+
+    // Setup ogg/opus encoder.
+    let mut encoder = opusenc::Encoder::create_pull(
+        comments,
+        OPUS_SAMPLE_RATE as i32,
+        channels.count(),
+        opusenc::MappingFamily::MonoStereo,
+    )?;
+    encoder.set_bitrate(opusenc::Bitrate::Bits(OPUS_BITRATE))?;
+
+    // Encode into ogg/opus container.
+    let mut output = Vec::new();
     {
-        let mut out = filter.get("out").unwrap();
+        encoder.write_float(&resampled)?;
+        while let Some(page) = encoder.get_page(false) {
+            output.extend_from_slice(page);
+        }
 
-        out.set_sample_format(encoder.format());
-        out.set_channel_layout(encoder.channel_layout());
-        out.set_sample_rate(format.rate());
-    }
-
-    filter.output("in", 0)?.input("out", 0)?.parse("anull")?;
-    filter.validate()?;
-
-    if let Some(codec) = encoder.codec() {
-        if !codec
-            .capabilities()
-            .contains(ffmpeg::codec::capabilities::Capabilities::VARIABLE_FRAME_SIZE)
-        {
-            filter.get("out").unwrap().sink().set_frame_size(encoder.frame_size());
+        encoder.drain()?;
+        while let Some(page) = encoder.get_page(true) {
+            output.extend_from_slice(page);
         }
     }
 
-    Ok(filter)
+    Ok(output)
 }
 
-struct FfmpegTranscoder {
-    stream: usize,
-    filter: filter::Graph,
-    decoder: codec::decoder::Audio,
-    encoder: codec::encoder::Audio,
-    in_time_base: ffmpeg::Rational,
-    out_time_base: ffmpeg::Rational,
-}
+fn resample<const OUT_RATE: usize>(
+    sample_rate: u32,
+    channels: Channels,
+    in_samples: &[f32],
+) -> anyhow::Result<Vec<f32>> {
+    let mut resampler = rubato::Fft::new(
+        sample_rate as usize,
+        OUT_RATE,
+        1024,
+        1,
+        channels.count(),
+        rubato::FixedSync::Input,
+    )?;
 
-fn transcoder(
-    ictx: &mut format::context::Input,
-    octx: &mut format::context::Output,
-    format: AudioFormat,
-) -> anyhow::Result<FfmpegTranscoder> {
-    let num_audio_streams =
-        ictx.streams().filter(|s| s.parameters().medium() == media::Type::Audio).count() as u32;
-    if num_audio_streams != 1 {
-        bail!("Wrong number of audio streams, expected excatly 1 but found {num_audio_streams}");
+    let num_in_frames = in_samples.len() / channels.count();
+    let mut sample_buf = {
+        let len = resampler.process_all_needed_output_len(num_in_frames) * channels.count();
+        vec![0.0; (1.2 * len as f64) as usize]
+    };
+
+    let num_out_frames = sample_buf.len() / channels.count();
+    {
+        let in_adapter = audioadapter_buffers::direct::InterleavedSlice::new(
+            in_samples,
+            channels.count(),
+            num_in_frames,
+        )?;
+
+        let mut out_adapter = audioadapter_buffers::direct::InterleavedSlice::new_mut(
+            &mut sample_buf,
+            channels.count(),
+            num_out_frames,
+        )?;
+
+        let (_in_processed, out_written) = resampler.process_all_into_buffer(
+            &in_adapter,
+            &mut out_adapter,
+            num_in_frames,
+            None,
+        )?;
+
+        sample_buf.truncate(out_written * channels.count());
     }
 
-    let input = ictx.streams().best(media::Type::Audio).expect("could not find best audio stream");
-    let context = ffmpeg::codec::context::Context::from_parameters(input.parameters())?;
-    let mut decoder = context.decoder().audio()?;
-    let codec =
-        ffmpeg::encoder::find(format.codec_id()).expect("failed to find encoder").audio()?;
-    let global = octx.format().flags().contains(ffmpeg::format::flag::Flags::GLOBAL_HEADER);
-
-    decoder.set_parameters(input.parameters())?;
-
-    let mut output = octx.add_stream(codec)?;
-    let mut context = ffmpeg::codec::context::Context::from_parameters(output.parameters())?;
-    if format == AudioFormat::Opus {
-        // `compression_level` for `libopus` is in the range of `0..=10`
-        let avctx = unsafe { &mut *context.as_mut_ptr() };
-        avctx.compression_level = 10;
-    }
-    let mut encoder = context.encoder().audio()?;
-
-    let channel_layout = codec
-        .channel_layouts()
-        .map(|cls| cls.best(decoder.channel_layout().channels()))
-        .unwrap_or(ffmpeg::channel_layout::ChannelLayout::STEREO);
-
-    if global {
-        encoder.set_flags(ffmpeg::codec::flag::Flags::GLOBAL_HEADER);
-    }
-
-    encoder.set_rate(format.rate() as i32);
-    encoder.set_channel_layout(channel_layout);
-    encoder.set_format(codec.formats().expect("unknown supported formats").next().unwrap());
-    encoder.set_bit_rate(TRANSCODE_BIT_RATE_TARGET);
-    encoder.set_max_bit_rate(TRANSCODE_BIT_RATE_MAX);
-
-    encoder.set_time_base((1, format.rate() as i32));
-    output.set_time_base((1, format.rate() as i32));
-
-    let encoder = encoder.open_as(codec)?;
-    output.set_parameters(&encoder);
-
-    let filter = filter(format, &decoder, &encoder).context("error building filter")?;
-
-    let in_time_base = decoder.time_base();
-    let out_time_base = output.time_base();
-
-    Ok(FfmpegTranscoder {
-        stream: input.index(),
-        filter,
-        decoder,
-        encoder,
-        in_time_base,
-        out_time_base,
-    })
-}
-
-impl FfmpegTranscoder {
-    fn send_frame_to_encoder(&mut self, frame: &ffmpeg::Frame) -> Result<(), ffmpeg::Error> {
-        self.encoder.send_frame(frame)
-    }
-
-    fn send_eof_to_encoder(&mut self) -> Result<(), ffmpeg::Error> {
-        self.encoder.send_eof()
-    }
-
-    fn receive_and_process_encoded_packets(
-        &mut self,
-        octx: &mut format::context::Output,
-    ) -> Result<(), ffmpeg::Error> {
-        let mut encoded = ffmpeg::Packet::empty();
-        while self.encoder.receive_packet(&mut encoded).is_ok() {
-            encoded.set_stream(0);
-            encoded.rescale_ts(self.in_time_base, self.out_time_base);
-            encoded.write_interleaved(octx)?;
-        }
-        Ok(())
-    }
-
-    fn add_frame_to_filter(&mut self, frame: &ffmpeg::Frame) -> Result<(), ffmpeg::Error> {
-        self.filter.get("in").unwrap().source().add(frame)
-    }
-
-    fn flush_filter(&mut self) -> Result<(), ffmpeg::Error> {
-        self.filter.get("in").unwrap().source().flush()
-    }
-
-    fn get_and_process_filtered_frames(
-        &mut self,
-        octx: &mut format::context::Output,
-    ) -> Result<(), ffmpeg::Error> {
-        let mut filtered = frame::Audio::empty();
-        while self.filter.get("out").unwrap().sink().frame(&mut filtered).is_ok() {
-            self.send_frame_to_encoder(&filtered)?;
-            self.receive_and_process_encoded_packets(octx)?;
-        }
-        Ok(())
-    }
-
-    fn send_packet_to_decoder(&mut self, packet: &ffmpeg::Packet) -> Result<(), ffmpeg::Error> {
-        self.decoder.send_packet(packet)
-    }
-
-    fn send_eof_to_decoder(&mut self) -> Result<(), ffmpeg::Error> {
-        self.decoder.send_eof()
-    }
-
-    fn receive_and_process_decoded_frames(
-        &mut self,
-        octx: &mut format::context::Output,
-    ) -> Result<(), ffmpeg::Error> {
-        let mut decoded = frame::Audio::empty();
-        while self.decoder.receive_frame(&mut decoded).is_ok() {
-            let timestamp = decoded.timestamp();
-            decoded.set_pts(timestamp);
-            self.add_frame_to_filter(&decoded)?;
-            self.get_and_process_filtered_frames(octx)?;
-        }
-        Ok(())
-    }
+    Ok(sample_buf)
 }
