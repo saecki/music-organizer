@@ -23,7 +23,7 @@ pub enum Command {
     /// Moves/copies, renames and retags Music files using their metadata.
     Organize(OrganizeCommand),
 
-    /// Generates a completion script for the specified shell.
+    /// Transcodes FLAC songs to OPUS.
     Transcode(TranscodeCommand),
 
     /// Generates a completion script for the specified shell.
