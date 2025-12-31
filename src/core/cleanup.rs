@@ -43,7 +43,7 @@ fn check_empty_dir(
 ) {
     // traverse depth first to be more memory efficient
     'stack: while let Some((_, dir_iter, is_empty)) = dir_stack.last_mut() {
-        while let Some(entry) = dir_iter.next() {
+        for entry in dir_iter {
             let Ok(entry) = entry else {
                 *is_empty = false;
                 continue;

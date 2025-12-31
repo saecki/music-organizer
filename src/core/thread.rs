@@ -74,11 +74,8 @@ pub enum Msg<T> {
 
 impl<S: WorkerState<W>, W> Worker<'_, S, W> {
     fn start(&mut self) {
-        loop {
-            match self.receive_msg() {
-                Msg::Work(work) => S::work(self, work),
-                Msg::Stop => break,
-            }
+        while let Msg::Work(work) = self.receive_msg() {
+            S::work(self, work)
         }
 
         self.state.stop();

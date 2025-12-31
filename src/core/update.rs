@@ -19,17 +19,12 @@ pub struct TagUpdate {
     pub artwork: Value<Vec<u8>>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Value<T> {
     Update(T),
     Remove,
+    #[default]
     Unchanged,
-}
-
-impl<T> Default for Value<T> {
-    fn default() -> Self {
-        Self::Unchanged
-    }
 }
 
 impl<T> Value<Vec<T>> {

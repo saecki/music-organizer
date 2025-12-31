@@ -305,7 +305,7 @@ fn display_indexing(index: &mut MusicIndex, verbosity: u8) {
             verbose,
             TITLE_INDEXING,
             "{ANSII_BLUE}{i} {ANSII_YELLOW}{}{ANSII_CLEAR}",
-            strip_dir(p, &music_dir)
+            strip_dir(p, music_dir)
         );
     });
     if !verbose {
