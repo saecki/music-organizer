@@ -3,14 +3,14 @@ use music_organizer::{Changes, Checks, Cleanup, FileOpType, MusicIndex, ReleaseA
 use std::fmt::Write as _;
 use std::io::Write as _;
 use std::path::Path;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::args::{
     Command, CompletionsCommand, EmbeddedArtworks, OrganizeCommand, TranscodeCommand,
 };
 use crate::display::strip_dir;
 use crate::display::{
-    ANSII_BLUE, ANSII_CLEAR, ANSII_CYAN_ON_BLACK, ANSII_GREEN, ANSII_GREEN_ON_BLACK,
+    ANSII_BLUE, ANSII_CLEAR, ANSII_CYAN_ON_BLACK, ANSII_GRAY, ANSII_GREEN, ANSII_GREEN_ON_BLACK,
     ANSII_PURPLE_ON_BLACK, ANSII_RED, ANSII_YELLOW, ANSII_YELLOW_ON_BLACK,
 };
 
@@ -94,16 +94,32 @@ impl Timer {
     }
 
     fn display(&self) {
+        println!();
+        fn print_duration_aligned(duration: Duration) {
+            let millis = duration.as_millis();
+            let seconds = millis / 1000;
+            let minutes = seconds / 60;
+            if millis < 1000 {
+                print!("{millis:6} {ANSII_GREEN}ms{ANSII_CLEAR}");
+            } else if seconds < 60 {
+                let seconds = millis as f64 / 1000.0;
+                print!("{seconds:6.2} {ANSII_YELLOW}s{ANSII_CLEAR} ");
+            } else {
+                let seconds = seconds % 60;
+                print!("{minutes:3}:{seconds:02}   ");
+            }
+        }
+
         let mut prev = self.start;
         for (time, name) in self.timings.iter() {
-            let millis = time.duration_since(prev).as_millis();
-            println!("{millis:6}ms  {name}");
-
+            print_duration_aligned(time.duration_since(prev));
+            println!("  {name}");
             prev = *time;
         }
 
-        let millis = prev.duration_since(self.start).as_millis();
-        println!("{millis:6}ms  total");
+        println!("{ANSII_GRAY}---------------------{ANSII_CLEAR}");
+        print_duration_aligned(prev.duration_since(self.start));
+        println!();
     }
 }
 

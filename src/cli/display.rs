@@ -4,10 +4,13 @@ use std::path::Path;
 use music_organizer::{Song, SongOperation, TagUpdate, Value};
 
 pub const ANSII_CLEAR: &str = "\x1b[0m";
+
 pub const ANSII_RED: &str = "\x1b[31m";
 pub const ANSII_GREEN: &str = "\x1b[32m";
 pub const ANSII_YELLOW: &str = "\x1b[33m";
 pub const ANSII_BLUE: &str = "\x1b[34m";
+
+pub const ANSII_GRAY: &str = "\x1b[90m";
 
 pub const ANSII_GREEN_ON_BLACK: &str = "\x1b[32;40m";
 pub const ANSII_YELLOW_ON_BLACK: &str = "\x1b[33;40m";
