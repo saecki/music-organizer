@@ -164,7 +164,6 @@ fn decode(path: &Path, all_samples: &mut Vec<f32>) -> anyhow::Result<(u32, Chann
     // TODO: Maybe filter out other tracks?
     let [track] = format_reader.tracks() else { bail!("expected exactly one audio track") };
     let track_id = track.id;
-    // TODO: Check the performance implications of the `verify` flag.
     let mut decoder = codecs
         .make(&track.codec_params, &DecoderOptions { verify: true })
         .context("unsupported codec")?;
@@ -175,12 +174,7 @@ fn decode(path: &Path, all_samples: &mut Vec<f32>) -> anyhow::Result<(u32, Chann
             continue;
         }
 
-        // TODO: Check if we need to be a little more lenient here.
-        // Intentionally skip over packets that couldn't be decoded.
-        // Err(err @ SymphoniaError::DecodeError(_)) => continue,
-        let audio_buf = decoder.decode(&packet)?;
-
-        break audio_buf;
+        break decoder.decode(&packet)?;
     };
 
     let spec = *audio_buf.spec();
@@ -203,11 +197,7 @@ fn decode(path: &Path, all_samples: &mut Vec<f32>) -> anyhow::Result<(u32, Chann
             continue;
         }
 
-        // TODO: Check if we need to be a little more lenient here.
-        // Intentionally skip over packets that couldn't be decoded.
-        // Err(err @ SymphoniaError::DecodeError(_)) => continue,
         let audio_buf = decoder.decode(&packet)?;
-
         sample_buf.copy_interleaved_ref(audio_buf);
         all_samples.extend_from_slice(sample_buf.samples());
     }
