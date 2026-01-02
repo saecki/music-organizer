@@ -3,12 +3,13 @@ use std::path::{Path, PathBuf};
 
 use crate::fs::is_image_extension;
 use crate::meta::IncompleteSong;
-use crate::thread::{worker_pool, Msg, Worker, WorkerState};
+use crate::thread::{Msg, Worker, WorkerState, worker_pool};
 use crate::{AudioFormat, Metadata, Song};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MusicIndex<'a> {
-    pub music_dir: &'a Path,
+    /// The root directory from which the index has been built.
+    pub root: &'a Path,
     /// Songs that have all relevant metadata.
     pub songs: Vec<Song>,
     /// Songs that are missing some necessary metadata.
@@ -20,7 +21,7 @@ pub struct MusicIndex<'a> {
 impl<'a> MusicIndex<'a> {
     pub fn new(music_dir: &'a Path) -> Self {
         Self {
-            music_dir,
+            root: music_dir,
             songs: Vec::new(),
             unknown_songs: Vec::new(),
             images: Vec::new(),
@@ -35,7 +36,7 @@ impl<'a> MusicIndex<'a> {
         let num_workers = 8;
         worker_pool(
             num_workers,
-            [self.music_dir.to_path_buf()],
+            [self.root.to_path_buf()],
             |_| MusicIndexBuilder { item_sender: item_sender.clone() },
             || {
                 while let Ok(Msg::Work(item)) = item_receiver.recv() {

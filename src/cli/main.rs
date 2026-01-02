@@ -156,7 +156,7 @@ fn transcode(args: TranscodeCommand) {
     // FIXME: Clean this up.
     for image_path in index.images.iter() {
         let sub_path = image_path
-            .strip_prefix(index.music_dir)
+            .strip_prefix(index.root)
             .expect("All songs should be located inside the `music-dir`");
         let new_path = args.output_dir.join(sub_path);
 
@@ -296,7 +296,7 @@ fn organize(args: OrganizeCommand) {
 }
 
 fn display_indexing(index: &mut MusicIndex, verbosity: u8, show_others: bool) {
-    let music_dir = index.music_dir;
+    let music_dir = index.root;
     let verbose = verbosity >= 2;
     print_title_verbose(verbose, TITLE_INDEXING);
 

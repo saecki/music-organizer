@@ -27,7 +27,7 @@ pub fn transcode_songs(
     worker_pool(
         num_workers,
         index.songs.iter(),
-        |_| TrancodeWorker { sender: item_sender.clone(), music_dir: index.music_dir, output_dir },
+        |_| TrancodeWorker { sender: item_sender.clone(), music_dir: index.root, output_dir },
         || {
             while let Ok(Msg::Work((op, res))) = item_receiver.recv() {
                 f(op, res);
