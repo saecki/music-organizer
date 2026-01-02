@@ -1,7 +1,7 @@
 use clap::builder::TypedValueParser;
 use clap::{crate_authors, crate_version, value_parser, ColorChoice, Parser, Subcommand};
 use clap_complete::Shell;
-use music_organizer::FileOpType;
+use music_organizer::MoveOrCopy;
 use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
@@ -89,10 +89,10 @@ pub struct OrganizeCommand {
 }
 
 impl OrganizeCommand {
-    pub fn op_type(&self) -> FileOpType {
+    pub fn move_or_copy(&self) -> MoveOrCopy {
         match self.copy {
-            true => FileOpType::Copy,
-            false => FileOpType::Move,
+            false => MoveOrCopy::Move,
+            true => MoveOrCopy::Copy,
         }
     }
 

@@ -9,7 +9,7 @@ use crate::{AudioFormat, Metadata, Song};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MusicIndex<'a> {
     pub music_dir: &'a Path,
-    /// Songs that have necessary metadata.
+    /// Songs that have all relevant metadata.
     pub songs: Vec<Song>,
     /// Songs that are missing some necessary metadata.
     pub unknown_songs: Vec<IncompleteSong>,

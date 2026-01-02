@@ -248,9 +248,9 @@ fn transcode_to_opus(
             add_vorbis(&mut comments, &meta::opus::GENRE, Some(genre))?;
         }
         if song.has_artwork {
-            let image = meta::Image::read_from(&song.path, song.format)?;
+            let image = meta::read_image_from(&song.path, song.format)?;
             comments.add_picture_from_memory(
-                &image.data,
+                &image,
                 opusenc::PictureType::FrontCover,
                 Option::<Vec<u8>>::None,
             )?;

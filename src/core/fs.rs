@@ -44,24 +44,17 @@ impl<'a> SongOperation<'a> {
         Self { song, mode_update: None, tag_update: None, new_path: None }
     }
 
-    pub fn execute(&self, op_type: FileOpType) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn execute(&self, move_or_copy: MoveOrCopy) -> anyhow::Result<()> {
         let path = match &self.new_path {
             Some(new) => {
-                match op_type {
-                    FileOpType::Copy => {
-                        std::fs::copy(&self.song.path, new)?;
-                    }
-                    FileOpType::Move => {
-                        std::fs::rename(&self.song.path, new)?;
-                    }
-                }
+                move_or_copy.execute(&self.song.path, new)?;
                 new
             }
             None => &self.song.path,
         };
 
-        if let Some(u) = &self.tag_update {
-            u.execute(path)?;
+        if let Some(update) = &self.tag_update {
+            update.execute(path, self.song.format)?;
         }
 
         if let Some(mode) = &self.mode_update {
@@ -79,30 +72,23 @@ pub struct FileOperation<'a> {
 }
 
 impl FileOperation<'_> {
-    pub fn execute(&self, op_type: FileOpType) -> Result<(), Box<dyn std::error::Error>> {
-        match op_type {
-            FileOpType::Copy => {
-                std::fs::copy(self.old_path, &self.new_path)?;
-            }
-            FileOpType::Move => {
-                std::fs::rename(self.old_path, &self.new_path)?;
-            }
-        };
+    pub fn execute(&self, move_or_copy: MoveOrCopy) -> anyhow::Result<()> {
+        move_or_copy.execute(&self.old_path, &self.new_path)?;
         Ok(())
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FileOpType {
+pub enum MoveOrCopy {
     Move,
     Copy,
 }
 
-impl From<bool> for FileOpType {
-    fn from(copy: bool) -> Self {
-        match copy {
-            true => Self::Copy,
-            false => Self::Move,
+impl MoveOrCopy {
+    fn execute(&self, old: &Path, new: &Path) -> std::io::Result<()> {
+        match self {
+            MoveOrCopy::Move => std::fs::rename(old, new),
+            MoveOrCopy::Copy => std::fs::copy(old, new).map(|_| ()),
         }
     }
 }

@@ -247,40 +247,34 @@ impl Metadata {
     }
 }
 
-pub struct Image {
-    pub data: Vec<u8>,
-}
-
-impl Image {
-    pub fn read_from(path: &Path, format: AudioFormat) -> anyhow::Result<Self> {
-        match format {
-            AudioFormat::Flac => {
-                let tag = metaflac::Tag::read_from_path(path)?;
-                let Some(picture) = tag.pictures().next() else {
-                    bail!("expected picture in flac file");
-                };
-                Ok(Image { data: picture.data.clone() })
-            }
-            AudioFormat::M4a => {
-                let mut tag = mp4ameta::Tag::read_from_path(path)?;
-                let Some(img) = tag.take_artwork() else { bail!("expected picture in m4a file") };
-                Ok(Image { data: img.data })
-            }
-            AudioFormat::Mp3 => {
-                let tag = id3::Tag::read_from_path(path)?;
-                let Some(picture) = tag.pictures().next() else {
-                    bail!("expected picture in mp3 file")
-                };
-                Ok(Image { data: picture.data.clone() })
-            }
-            AudioFormat::Opus => {
-                let tag = opusmeta::Tag::read_from_path(path)?;
-                let Some(picture) = tag.iter_pictures().and_then(|mut iter| iter.next()) else {
-                    bail!("expected picture in opus file")
-                };
-                let picture = picture?;
-                Ok(Image { data: picture.data.clone() })
-            }
+pub fn read_image_from(path: &Path, format: AudioFormat) -> anyhow::Result<Vec<u8>> {
+    match format {
+        AudioFormat::Flac => {
+            let tag = metaflac::Tag::read_from_path(path)?;
+            let Some(picture) = tag.pictures().next() else {
+                bail!("expected picture in flac file");
+            };
+            Ok(picture.data.clone())
+        }
+        AudioFormat::M4a => {
+            let mut tag = mp4ameta::Tag::read_from_path(path)?;
+            let Some(img) = tag.take_artwork() else { bail!("expected picture in m4a file") };
+            Ok(img.data)
+        }
+        AudioFormat::Mp3 => {
+            let tag = id3::Tag::read_from_path(path)?;
+            let Some(picture) = tag.pictures().next() else {
+                bail!("expected picture in mp3 file")
+            };
+            Ok(picture.data.clone())
+        }
+        AudioFormat::Opus => {
+            let tag = opusmeta::Tag::read_from_path(path)?;
+            let Some(picture) = tag.iter_pictures().and_then(|mut iter| iter.next()) else {
+                bail!("expected picture in opus file")
+            };
+            let picture = picture?;
+            Ok(picture.data.clone())
         }
     }
 }

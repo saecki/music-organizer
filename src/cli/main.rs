@@ -1,5 +1,5 @@
 use clap::{CommandFactory, Parser};
-use music_organizer::{Changes, Checks, Cleanup, FileOpType, MusicIndex, ReleaseArtists, Value};
+use music_organizer::{Changes, Checks, Cleanup, MoveOrCopy, MusicIndex, ReleaseArtists, Value};
 use std::fmt::Write as _;
 use std::io::Write as _;
 use std::path::Path;
@@ -39,7 +39,7 @@ const MOVE_TENSES: Tenses = Tenses { sim_pres: "move", pres_prog: "moving", sim_
 const COPY_TENSES: Tenses = Tenses { sim_pres: "copy", pres_prog: "copying", sim_past: "copied" };
 
 struct Dict {
-    op_type: Tenses,
+    move_or_copy: Tenses,
     rename: Tenses,
 }
 
@@ -227,9 +227,9 @@ fn display_transcoding(index: &MusicIndex, output_dir: &Path, verbosity: u8) {
 
 fn organize(args: OrganizeCommand) {
     let dict = Dict {
-        op_type: match args.op_type() {
-            FileOpType::Move => MOVE_TENSES,
-            FileOpType::Copy => COPY_TENSES,
+        move_or_copy: match args.move_or_copy() {
+            MoveOrCopy::Move => MOVE_TENSES,
+            MoveOrCopy::Copy => COPY_TENSES,
         },
         rename: RENAME_TENSES,
     };
@@ -249,7 +249,7 @@ fn organize(args: OrganizeCommand) {
     timer.time("checking");
 
     // changes
-    let changes = Changes::generate(checks, args.output_dir());
+    let changes = Changes::organize(checks, args.output_dir(), args.move_or_copy());
     display_changes(&changes, &args, &dict);
     timer.time("changes");
 
@@ -378,7 +378,7 @@ fn display_changes(changes: &Changes, args: &OrganizeCommand, dict: &Dict) {
                         &args.music_dir,
                         args.output_dir(),
                         o,
-                        dict.op_type.sim_pres,
+                        dict.move_or_copy.sim_pres,
                         dict.rename.sim_pres,
                         args.verbosity,
                     )
@@ -397,7 +397,7 @@ fn display_changes(changes: &Changes, args: &OrganizeCommand, dict: &Dict) {
                         args.output_dir(),
                         f.old_path,
                         &f.new_path,
-                        dict.op_type.sim_pres,
+                        dict.move_or_copy.sim_pres,
                         dict.rename.sim_pres,
                     )
                 );
@@ -415,7 +415,7 @@ fn display_changes(changes: &Changes, args: &OrganizeCommand, dict: &Dict) {
         if num_dir_creations == 1 { "dir" } else { "dirs" },
         if verbose { '\n' } else { ' ' },
         if num_file_ops == 1 { "file" } else { "files" },
-        dict.op_type.sim_past
+        dict.move_or_copy.sim_past
     );
 
     println!();
@@ -431,7 +431,7 @@ fn display_writing(changes: &Changes, args: &OrganizeCommand, dict: &Dict) {
     print_title_verbose(verbose, TITLE_WRITING);
 
     let mut dir_creation_idx = 0;
-    changes.execute_dir_creations(&mut |d, r| {
+    changes.execute_dir_creations(|d, r| {
         dir_creation_idx += 1;
         match r {
             Ok(_) => {
@@ -454,7 +454,7 @@ fn display_writing(changes: &Changes, args: &OrganizeCommand, dict: &Dict) {
     });
 
     let mut file_operation_idx = 0;
-    changes.execute_song_operations(args.op_type(), &mut |o, r| {
+    changes.execute_song_operations(|o, r| {
         file_operation_idx += 1;
         match r {
             Ok(_) => {
@@ -466,7 +466,7 @@ fn display_writing(changes: &Changes, args: &OrganizeCommand, dict: &Dict) {
                         &args.music_dir,
                         args.output_dir(),
                         o,
-                        dict.op_type.sim_past,
+                        dict.move_or_copy.sim_past,
                         dict.rename.sim_past,
                         args.verbosity,
                     )
@@ -479,7 +479,7 @@ fn display_writing(changes: &Changes, args: &OrganizeCommand, dict: &Dict) {
                         &args.music_dir,
                         args.output_dir(),
                         o,
-                        dict.op_type.pres_prog,
+                        dict.move_or_copy.pres_prog,
                         dict.rename.pres_prog,
                         VERBOSE
                     ),
@@ -488,7 +488,7 @@ fn display_writing(changes: &Changes, args: &OrganizeCommand, dict: &Dict) {
         }
     });
 
-    changes.execute_file_operations(args.op_type(), &mut |f, r| {
+    changes.execute_file_operations(|f, r| {
         file_operation_idx += 1;
         match r {
             Ok(_) => {
@@ -501,7 +501,7 @@ fn display_writing(changes: &Changes, args: &OrganizeCommand, dict: &Dict) {
                         args.output_dir(),
                         f.old_path,
                         &f.new_path,
-                        dict.op_type.sim_past,
+                        dict.move_or_copy.sim_past,
                         dict.rename.sim_past,
                     )
                 );
@@ -514,7 +514,7 @@ fn display_writing(changes: &Changes, args: &OrganizeCommand, dict: &Dict) {
                         args.output_dir(),
                         f.old_path,
                         &f.new_path,
-                        dict.op_type.pres_prog,
+                        dict.move_or_copy.pres_prog,
                         dict.rename.pres_prog,
                     )
                 );
@@ -531,7 +531,7 @@ fn display_writing(changes: &Changes, args: &OrganizeCommand, dict: &Dict) {
             "{ANSII_BLUE}{num_dir_creations} {ANSII_GREEN}{} {ANSII_BLUE}{num_file_ops} {ANSII_GREEN}{} {ANSII_GREEN}{}{ANSII_CLEAR}",
             if num_dir_creations == 1 { "dir created" } else { "dirs created" },
             if num_file_ops == 1 { "file" } else { "files" },
-            dict.op_type.sim_past
+            dict.move_or_copy.sim_past
         );
     }
 

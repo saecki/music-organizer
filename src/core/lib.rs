@@ -12,7 +12,7 @@ mod util;
 pub use changes::Changes;
 pub use checks::Checks;
 pub use cleanup::Cleanup;
-pub use fs::{DirCreation, FileOpType, FileOperation, SongOperation};
+pub use fs::{DirCreation, MoveOrCopy, FileOperation, SongOperation};
 pub use index::{Item, MusicIndex};
 pub use meta::{Album, AudioFormat, Metadata, ReleaseArtists, Song};
 pub use transcode::transcode_songs;

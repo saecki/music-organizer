@@ -6,6 +6,8 @@ use id3::TagLike;
 use metaflac::block::PictureType as FlacPictureType;
 use mp4ameta::Img;
 
+use crate::AudioFormat;
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TagUpdate {
     pub track_number: Value<u16>,
@@ -72,18 +74,18 @@ impl<T> Value<T> {
 }
 
 impl TagUpdate {
-    pub fn execute(&self, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-        match path.extension().unwrap().to_str().unwrap() {
-            "mp3" => self.write_mp3(path)?,
-            "m4a" => self.write_mp4(path)?,
-            "flac" => self.write_flac(path)?,
-            _ => (),
+    pub fn execute(&self, path: &Path, format: AudioFormat) -> anyhow::Result<()> {
+        match format {
+            AudioFormat::Flac => self.write_flac(path)?,
+            AudioFormat::M4a => self.write_mp4(path)?,
+            AudioFormat::Mp3 => self.write_mp3(path)?,
+            AudioFormat::Opus => todo!(),
         }
 
         Ok(())
     }
 
-    fn write_mp3(&self, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    fn write_mp3(&self, path: &Path) -> anyhow::Result<()> {
         let tag = match id3::Tag::read_from_path(path) {
             Ok(mut tag) => {
                 match &self.release_artists {
@@ -150,7 +152,7 @@ impl TagUpdate {
         Ok(())
     }
 
-    fn write_mp4(&self, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    fn write_mp4(&self, path: &Path) -> anyhow::Result<()> {
         let tag = match mp4ameta::Tag::read_from_path(path) {
             Ok(mut tag) => {
                 match &self.release_artists {
@@ -209,7 +211,7 @@ impl TagUpdate {
         Ok(())
     }
 
-    fn write_flac(&self, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    fn write_flac(&self, path: &Path) -> anyhow::Result<()> {
         let mut tag = match metaflac::Tag::read_from_path(path) {
             Ok(mut tag) => {
                 let vorbis = tag.vorbis_comments_mut();
