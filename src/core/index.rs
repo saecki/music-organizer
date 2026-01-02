@@ -102,9 +102,9 @@ impl WorkerState<PathBuf> for MusicIndexBuilder {
 
 impl MusicIndexBuilder {
     fn add_item(&mut self, p: PathBuf) {
-        let extension = match p.extension() {
-            Some(e) => e,
-            None => return,
+        let Some(extension) = p.extension() else {
+            self.send_item(Item::Other(p));
+            return;
         };
 
         if let Some(format) = AudioFormat::from_extension(extension) {
