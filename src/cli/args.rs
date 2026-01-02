@@ -63,6 +63,10 @@ pub struct OrganizeCommand {
     #[clap(long = "copy", short = 'c', requires = "output-dir")]
     pub copy: bool,
 
+    /// Only check files and print actions don't change anything.
+    #[clap(long = "show-others")]
+    pub show_others: bool,
+
     /// Assumes yes as a answer for questions.
     #[clap(long = "assume-yes", short = 'y')]
     pub assume_yes: bool,

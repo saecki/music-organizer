@@ -1,5 +1,7 @@
 use clap::{CommandFactory, Parser};
-use music_organizer::{Changes, Checks, Cleanup, MoveOrCopy, MusicIndex, ReleaseArtists, Value};
+use music_organizer::{
+    Changes, Checks, Cleanup, Item, MoveOrCopy, MusicIndex, ReleaseArtists, Value,
+};
 use std::fmt::Write as _;
 use std::io::Write as _;
 use std::path::Path;
@@ -144,7 +146,7 @@ fn transcode(args: TranscodeCommand) {
 
     // indexing
     let mut index = MusicIndex::new(&args.music_dir);
-    display_indexing(&mut index, args.verbosity);
+    display_indexing(&mut index, args.verbosity, false);
     timer.time("indexing");
 
     // transcode
@@ -199,7 +201,7 @@ fn display_transcoding(index: &MusicIndex, output_dir: &Path, verbosity: u8) {
                 print_verbose!(
                     verbose,
                     TITLE_TRANSCODING,
-                    "{ANSII_BLUE}{i}{ANSII_CLEAR} {simp_past} {ANSII_YELLOW}{new_path}{ANSII_YELLOW}",
+                    "{ANSII_BLUE}{i}{ANSII_CLEAR} {simp_past} {ANSII_YELLOW}{new_path}{ANSII_CLEAR}",
                 );
             }
             Err(err) => {
@@ -238,7 +240,7 @@ fn organize(args: OrganizeCommand) {
 
     // indexing
     let mut index = MusicIndex::new(&args.music_dir);
-    display_indexing(&mut index, args.verbosity);
+    display_indexing(&mut index, args.verbosity, args.show_others);
     timer.time("indexing");
 
     // checking
@@ -293,7 +295,7 @@ fn organize(args: OrganizeCommand) {
     }
 }
 
-fn display_indexing(index: &mut MusicIndex, verbosity: u8) {
+fn display_indexing(index: &mut MusicIndex, verbosity: u8, show_others: bool) {
     let music_dir = index.music_dir;
     let verbose = verbosity >= 2;
     print_title_verbose(verbose, TITLE_INDEXING);
@@ -303,11 +305,22 @@ fn display_indexing(index: &mut MusicIndex, verbosity: u8) {
         i += 1;
 
         let path = strip_dir(item.path(), music_dir);
-        print_verbose!(
-            verbose,
-            TITLE_INDEXING,
-            "{ANSII_BLUE}{i} {ANSII_YELLOW}{path}{ANSII_CLEAR}",
-        );
+        match item {
+            Item::Other(_) if show_others => {
+                print_verbose!(
+                    false,
+                    TITLE_INDEXING,
+                    "{ANSII_BLUE}{i}{ANSII_CLEAR} other file {ANSII_YELLOW}{path}{ANSII_CLEAR}\n",
+                );
+            }
+            _ => {
+                print_verbose!(
+                    verbose,
+                    TITLE_INDEXING,
+                    "{ANSII_BLUE}{i} {ANSII_YELLOW}{path}{ANSII_CLEAR}",
+                );
+            }
+        };
     });
     if !verbose {
         print_verbose!(
@@ -359,25 +372,23 @@ fn display_changes(changes: &Changes, args: &OrganizeCommand, dict: &Dict) {
     if verbose {
         if !changes.dir_creations.is_empty() {
             print_subtitle(SUBTITLE_DIRS);
-            for (i, d) in changes.dir_creations.iter().enumerate() {
+            for (i, dc) in changes.dir_creations.iter().enumerate() {
                 let n = i + 1;
-                println!(
-                    "{ANSII_BLUE}{n}{ANSII_CLEAR} create {ANSII_YELLOW}{}{ANSII_CLEAR}",
-                    d.path.display()
-                );
+                let path = strip_dir(&dc.path, args.output_dir());
+                println!("{ANSII_BLUE}{n}{ANSII_CLEAR} create {ANSII_YELLOW}{path}{ANSII_CLEAR}",);
             }
             println!();
         }
         if !changes.song_operations.is_empty() {
             print_subtitle(SUBTITLE_SONGS);
-            for (i, o) in changes.song_operations.values().enumerate() {
+            for (i, op) in changes.song_operations.values().enumerate() {
                 let n = i + 1;
                 println!(
                     "{ANSII_BLUE}{n}{ANSII_CLEAR} {}",
                     display::SongOp(
                         &args.music_dir,
                         args.output_dir(),
-                        o,
+                        op,
                         dict.move_or_copy.sim_pres,
                         dict.rename.sim_pres,
                         args.verbosity,
@@ -388,15 +399,15 @@ fn display_changes(changes: &Changes, args: &OrganizeCommand, dict: &Dict) {
         }
         if !changes.file_operations.is_empty() {
             print_subtitle(SUBTITLE_OTHERS);
-            for (i, f) in changes.file_operations.iter().enumerate() {
+            for (i, op) in changes.file_operations.iter().enumerate() {
                 let n = i + 1;
                 println!(
                     "{ANSII_BLUE}{n}{ANSII_CLEAR} {}",
                     display::FileOp(
                         &args.music_dir,
                         args.output_dir(),
-                        f.old_path,
-                        &f.new_path,
+                        op.old_path,
+                        &op.new_path,
                         dict.move_or_copy.sim_pres,
                         dict.rename.sim_pres,
                     )
