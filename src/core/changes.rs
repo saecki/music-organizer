@@ -123,10 +123,15 @@ fn organize_diff(changes: &mut Changes, output_dir: &Path) {
             tag_update.and_then(|t| t.track_number.num_value()).or(song.track_number).unwrap_or(0);
 
         let mut path = output_dir.join(release_artists);
-        changes.dir_creation(&path);
+
+        if !song.path.starts_with(&path) {
+            changes.dir_creation(&path);
+        }
 
         path.push(&release);
-        changes.dir_creation(&path);
+        if !song.path.starts_with(&path) {
+            changes.dir_creation(&path);
+        }
 
         let mut file_name = OsString::new();
         if total_discs > 1 {
