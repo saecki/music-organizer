@@ -161,15 +161,15 @@ impl<'a> Changes<'a> {
             }
         }
 
-        if !self.index.unknown.is_empty() {
+        if !self.index.unknown_songs.is_empty() {
             let unknown_dir = output_dir.join("unknown");
             self.dir_creation(&unknown_dir);
 
-            for unknown in self.index.unknown.iter() {
-                let new_path = unknown_dir.join(unknown.file_name().unwrap());
+            for unknown in self.index.unknown_songs.iter() {
+                let new_path = unknown_dir.join(unknown.path.file_name().unwrap());
 
-                if &new_path != unknown {
-                    self.file_operations.push(FileOperation { old_path: unknown, new_path });
+                if new_path != unknown.path {
+                    self.file_operations.push(FileOperation { old_path: &unknown.path, new_path });
                 }
             }
         }

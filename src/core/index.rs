@@ -2,23 +2,33 @@ use crossbeam_channel::Sender;
 use std::path::{Path, PathBuf};
 
 use crate::fs::is_image_extension;
+use crate::meta::IncompleteSong;
 use crate::thread::{worker_pool, Msg, Worker, WorkerState};
 use crate::{AudioFormat, Metadata, Song};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MusicIndex<'a> {
     pub music_dir: &'a Path,
+    /// Songs that have necessary metadata.
     pub songs: Vec<Song>,
-    pub unknown: Vec<PathBuf>,
+    /// Songs that are missing some necessary metadata.
+    pub unknown_songs: Vec<IncompleteSong>,
     pub images: Vec<PathBuf>,
+    pub other: Vec<PathBuf>,
 }
 
 impl<'a> MusicIndex<'a> {
     pub fn new(music_dir: &'a Path) -> Self {
-        Self { music_dir, songs: Vec::new(), unknown: Vec::new(), images: Vec::new() }
+        Self {
+            music_dir,
+            songs: Vec::new(),
+            unknown_songs: Vec::new(),
+            images: Vec::new(),
+            other: Vec::new(),
+        }
     }
 
-    pub fn read(&mut self, f: &mut impl FnMut(&Path)) {
+    pub fn read(&mut self, f: &mut impl FnMut(&Item)) {
         let (item_sender, item_receiver) = crossbeam_channel::unbounded();
 
         // 8 threads seems to be the sweat spot on my machine :)
@@ -28,20 +38,17 @@ impl<'a> MusicIndex<'a> {
             [self.music_dir.to_path_buf()],
             |_| MusicIndexBuilder { item_sender: item_sender.clone() },
             || {
-                while let Ok(Msg::Work(i)) = item_receiver.recv() {
-                    match i {
-                        Item::Song(s) => {
-                            f(&s.path);
-                            self.songs.push(s);
+                while let Ok(Msg::Work(item)) = item_receiver.recv() {
+                    f(&item);
+                    match item {
+                        Item::Song((path, format, meta)) => {
+                            match Song::try_from((path, format, meta)) {
+                                Ok(song) => self.songs.push(song),
+                                Err(unknown_song) => self.unknown_songs.push(unknown_song),
+                            }
                         }
-                        Item::Unknown(p) => {
-                            f(&p);
-                            self.unknown.push(p);
-                        }
-                        Item::Image(p) => {
-                            f(&p);
-                            self.images.push(p);
-                        }
+                        Item::Image(path) => self.images.push(path),
+                        Item::Other(path) => self.other.push(path),
                     }
                 }
             },
@@ -49,10 +56,20 @@ impl<'a> MusicIndex<'a> {
     }
 }
 
-enum Item {
-    Song(Song),
-    Unknown(PathBuf),
+pub enum Item {
+    Song((PathBuf, AudioFormat, Metadata)),
     Image(PathBuf),
+    Other(PathBuf),
+}
+
+impl Item {
+    pub fn path(&self) -> &Path {
+        match self {
+            Self::Song((path, ..)) => path,
+            Self::Image(path) => path,
+            Self::Other(path) => path,
+        }
+    }
 }
 
 struct MusicIndexBuilder {
@@ -91,48 +108,12 @@ impl MusicIndexBuilder {
 
         if let Some(format) = AudioFormat::from_extension(extension) {
             let m = Metadata::read_from(&p, format);
-            self.add_song(p, m.unwrap_or_default(), format);
+            self.send_item(Item::Song((p, format, m.unwrap_or_default())));
         } else if is_image_extension(extension) {
-            let _ = self.item_sender.send(Msg::Work(Item::Image(p)));
+            self.send_item(Item::Image(p));
+        } else {
+            self.send_item(Item::Other(p));
         }
-    }
-
-    fn add_song(&mut self, p: PathBuf, m: Metadata, format: AudioFormat) {
-        let Some(release_artists) = m.album_artists() else {
-            self.send_item(Item::Unknown(p));
-            return;
-        };
-
-        let Some(song_artists) = m.song_artists() else {
-            self.send_item(Item::Unknown(p));
-            return;
-        };
-
-        let Some(release) = &m.album else {
-            self.send_item(Item::Unknown(p));
-            return;
-        };
-
-        let Some(title) = &m.title else {
-            self.send_item(Item::Unknown(p));
-            return;
-        };
-
-        self.send_item(Item::Song(Song {
-            format,
-            mode: m.mode,
-            track_number: m.track_number,
-            total_tracks: m.total_tracks,
-            disc_number: m.disc_number,
-            total_discs: m.total_discs,
-            album_artists: release_artists.to_owned(),
-            artists: song_artists.to_owned(),
-            album: release.to_owned(),
-            title: title.to_owned(),
-            genres: m.genres,
-            has_artwork: m.has_artwork,
-            path: p,
-        }));
     }
 
     fn send_item(&self, item: Item) {

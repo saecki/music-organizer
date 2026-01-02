@@ -57,8 +57,8 @@ impl Display for AudioFormat {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Song {
-    pub format: AudioFormat,
     pub path: PathBuf,
+    pub format: AudioFormat,
     pub mode: Option<Mode>,
     pub track_number: Option<u16>,
     pub total_tracks: Option<u16>,
@@ -70,6 +70,43 @@ pub struct Song {
     pub title: String,
     pub genres: Vec<String>,
     pub has_artwork: bool,
+}
+
+impl TryFrom<(PathBuf, AudioFormat, Metadata)> for Song {
+    type Error = IncompleteSong;
+
+    fn try_from(
+        (path, format, meta): (PathBuf, AudioFormat, Metadata),
+    ) -> Result<Self, Self::Error> {
+        let (Some(album_artists), Some(song_artists), Some(album), Some(title)) =
+            (meta.album_artists(), meta.song_artists(), meta.album.as_ref(), meta.title.as_ref())
+        else {
+            return Err(IncompleteSong { path, format, meta });
+        };
+
+        Ok(Song {
+            format,
+            mode: meta.mode,
+            track_number: meta.track_number,
+            total_tracks: meta.total_tracks,
+            disc_number: meta.disc_number,
+            total_discs: meta.total_discs,
+            album_artists: album_artists.to_owned(),
+            artists: song_artists.to_owned(),
+            album: album.to_owned(),
+            title: title.to_owned(),
+            genres: meta.genres,
+            has_artwork: meta.has_artwork,
+            path,
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IncompleteSong {
+    pub path: PathBuf,
+    pub format: AudioFormat,
+    pub meta: Metadata,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

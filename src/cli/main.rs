@@ -299,13 +299,14 @@ fn display_indexing(index: &mut MusicIndex, verbosity: u8) {
     print_title_verbose(verbose, TITLE_INDEXING);
 
     let mut i = 0;
-    index.read(&mut |p| {
+    index.read(&mut |item| {
         i += 1;
+
+        let path = strip_dir(item.path(), music_dir);
         print_verbose!(
             verbose,
             TITLE_INDEXING,
-            "{ANSII_BLUE}{i} {ANSII_YELLOW}{}{ANSII_CLEAR}",
-            strip_dir(p, music_dir)
+            "{ANSII_BLUE}{i} {ANSII_YELLOW}{path}{ANSII_CLEAR}",
         );
     });
     if !verbose {
