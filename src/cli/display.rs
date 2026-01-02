@@ -58,7 +58,7 @@ fn format_song_op(
     verbosity: u8,
 ) -> std::fmt::Result {
     if let Some(mode) = song_op.mode_update {
-        println!("mode {mode} ");
+        writeln!(f, "mode {mode} ")?;
     }
     match (&song_op.new_path, &song_op.tag_update) {
         (Some(new_path), Some(tag_update)) => {
