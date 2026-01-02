@@ -1,12 +1,13 @@
 use std::collections::BTreeMap;
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsStr;
+use std::fmt::Write as _;
 use std::path::Path;
 
 use indexmap::IndexMap;
 
 use crate::fs::{fast_path_eq, valid_os_str, valid_os_str_dots};
 use crate::{
-    util, Checks, DirCreation, FileOperation, MoveOrCopy, MusicIndex, Song, SongOperation,
+    Checks, DirCreation, FileOperation, MoveOrCopy, MusicIndex, Song, SongOperation, util,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -83,14 +84,7 @@ fn organize_diff(changes: &mut Changes, output_dir: &Path) {
     let mut release_dirs = BTreeMap::<&OsStr, Vec<&Song>>::new();
     for song in changes.index.songs.iter() {
         let parent_dir = song.path.parent().unwrap();
-        match release_dirs.entry(parent_dir.as_os_str()) {
-            std::collections::btree_map::Entry::Occupied(occupied) => {
-                occupied.into_mut().push(song);
-            }
-            std::collections::btree_map::Entry::Vacant(vacant) => {
-                vacant.insert(vec![song]);
-            }
-        }
+        release_dirs.entry(parent_dir.as_os_str()).or_default().push(song);
 
         let op = changes.song_operations.get_mut(&(song as *const Song));
         let tag_update = op.and_then(|op| op.tag_update.as_ref());
@@ -113,7 +107,7 @@ fn organize_diff(changes: &mut Changes, output_dir: &Path) {
         let title = tag_update.and_then(|t| t.title.str_value()).unwrap_or(&song.title);
         let title = valid_os_str(title);
 
-        let extension = song.path.extension().unwrap();
+        let extension = song.format.extension();
 
         let disc =
             tag_update.and_then(|t| t.disc_number.num_value()).or(song.disc_number).unwrap_or(0);
@@ -133,17 +127,11 @@ fn organize_diff(changes: &mut Changes, output_dir: &Path) {
             changes.dir_creation(&path);
         }
 
-        let mut file_name = OsString::new();
+        let mut file_name = String::new();
         if total_discs > 1 {
-            file_name.push(disc.to_string());
-            file_name.push(" ");
+            _ = write!(&mut file_name, "{disc} ");
         }
-        file_name.push(format!("{:02} - ", track));
-        file_name.push(&artists);
-        file_name.push(" - ");
-        file_name.push(&title);
-        file_name.push(".");
-        file_name.push(extension);
+        _ = write!(&mut file_name, "{track:02} - {artists} - {title}.{extension}");
 
         path.push(file_name);
 
