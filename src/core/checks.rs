@@ -1,6 +1,6 @@
 use indexmap::IndexMap;
 
-use crate::{util, MusicIndex, Album, ReleaseArtists, Song, SongOperation, Value};
+use crate::{Album, MusicIndex, ReleaseArtists, Song, SongOperation, Value, util};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Checks<'a> {
@@ -71,12 +71,12 @@ impl<'a> Checks<'a> {
 
     pub fn check_file_permissions(&mut self) {
         for song in self.index.songs.iter() {
-            if let Some(mode) = song.mode {
-                if mode.permissions() != 0o755 {
-                    util::update_song_op(&mut self.song_operations, song, |op| {
-                        op.mode_update = Some(mode.with_permissions(0o755));
-                    });
-                }
+            if let Some(mode) = song.mode
+                && mode.permissions() != 0o755
+            {
+                util::update_song_op(&mut self.song_operations, song, |op| {
+                    op.mode_update = Some(mode.with_permissions(0o755));
+                });
             }
         }
     }

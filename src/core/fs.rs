@@ -5,9 +5,9 @@ use std::path::PathBuf;
 
 use regex::Regex;
 
+use crate::Song;
 use crate::meta::Mode;
 use crate::update::TagUpdate;
-use crate::Song;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct DirCreation {
@@ -73,7 +73,7 @@ pub struct FileOperation<'a> {
 
 impl FileOperation<'_> {
     pub fn execute(&self, move_or_copy: MoveOrCopy) -> anyhow::Result<()> {
-        move_or_copy.execute(&self.old_path, &self.new_path)?;
+        move_or_copy.execute(self.old_path, &self.new_path)?;
         Ok(())
     }
 }
