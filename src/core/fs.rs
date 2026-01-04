@@ -9,45 +9,45 @@ use crate::Song;
 use crate::meta::Mode;
 use crate::update::TagUpdate;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct DirCreation {
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct CreateDirOp {
     pub path: PathBuf,
 }
 
-impl DirCreation {
+impl CreateDirOp {
     pub fn execute(&self) -> Result<(), std::io::Error> {
         std::fs::create_dir(&self.path)
     }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct DirDeletion {
+pub struct DeleteDirOp {
     pub path: PathBuf,
 }
 
-impl DirDeletion {
+impl DeleteDirOp {
     pub fn execute(&self) -> Result<(), std::io::Error> {
         std::fs::remove_dir(&self.path)
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SongOperation<'a> {
+pub struct SongOp<'a> {
     pub song: &'a Song,
     pub tag_update: Option<TagUpdate>,
     pub mode_update: Option<Mode>,
     pub new_path: Option<PathBuf>,
 }
 
-impl<'a> SongOperation<'a> {
+impl<'a> SongOp<'a> {
     pub fn new(song: &'a Song) -> Self {
         Self { song, mode_update: None, tag_update: None, new_path: None }
     }
 
-    pub fn execute(&self, move_or_copy: MoveOrCopy) -> anyhow::Result<()> {
+    pub fn execute(&self) -> anyhow::Result<()> {
         let path = match &self.new_path {
             Some(new) => {
-                move_or_copy.execute(&self.song.path, new)?;
+                std::fs::rename(&self.song.path, new)?;
                 new
             }
             None => &self.song.path,
@@ -65,31 +65,44 @@ impl<'a> SongOperation<'a> {
     }
 }
 
+/// Move a file.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FileOperation<'a> {
+pub struct MoveFileOp<'a> {
     pub old_path: &'a Path,
     pub new_path: PathBuf,
 }
 
-impl FileOperation<'_> {
-    pub fn execute(&self, move_or_copy: MoveOrCopy) -> anyhow::Result<()> {
-        move_or_copy.execute(self.old_path, &self.new_path)?;
+impl MoveFileOp<'_> {
+    pub fn execute(&self) -> anyhow::Result<()> {
+        std::fs::rename(self.old_path, &self.new_path)?;
         Ok(())
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum MoveOrCopy {
-    Move,
-    Copy,
+/// Copy a file.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CopyFileOp<'a> {
+    pub old_path: &'a Path,
+    pub new_path: PathBuf,
 }
 
-impl MoveOrCopy {
-    fn execute(&self, old: &Path, new: &Path) -> std::io::Result<()> {
-        match self {
-            MoveOrCopy::Move => std::fs::rename(old, new),
-            MoveOrCopy::Copy => std::fs::copy(old, new).map(|_| ()),
-        }
+impl CopyFileOp<'_> {
+    pub fn execute(&self) -> anyhow::Result<()> {
+        std::fs::copy(self.old_path, &self.new_path)?;
+        Ok(())
+    }
+}
+
+/// Delete a file.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeleteFileOp<'a> {
+    pub path: &'a Path,
+}
+
+impl DeleteFileOp<'_> {
+    pub fn execute(&self) -> anyhow::Result<()> {
+        std::fs::remove_file(self.path)?;
+        Ok(())
     }
 }
 
@@ -102,10 +115,7 @@ pub fn valid_os_str_dots(str: &str) -> String {
     let mut s = RE.with(|re| re.replace_all(str, "").to_string());
 
     if s.starts_with('.') {
-        // This is safe because we know that the first byte has to be present and is character of 1 byte length.
-        unsafe {
-            s.as_bytes_mut()[0] = b'_';
-        }
+        s.replace_range(0..1, "_");
     }
     if s.ends_with('.') {
         s.pop();

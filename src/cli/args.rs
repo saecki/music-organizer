@@ -1,8 +1,7 @@
 use clap::builder::TypedValueParser;
-use clap::{crate_authors, crate_version, value_parser, ColorChoice, Parser, Subcommand};
+use clap::{ColorChoice, Parser, Subcommand, crate_authors, crate_version, value_parser};
 use clap_complete::Shell;
-use music_organizer::MoveOrCopy;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[clap(
@@ -41,14 +40,6 @@ pub struct OrganizeCommand {
     )]
     pub music_dir: PathBuf,
 
-    /// The directory which the content will be written to.
-    #[clap(
-        long = "output-dir",
-        short = 'o',
-        value_parser = output_dir_value_parser(),
-    )]
-    pub output_dir: Option<PathBuf>,
-
     /// Verbosity level of the output. 0 means least 2 means most verbose ouput.
     #[clap(
         long = "verbosity",
@@ -58,10 +49,6 @@ pub struct OrganizeCommand {
         default_value = "1",
     )]
     pub verbosity: u8,
-
-    /// Copy the files instead of moving.
-    #[clap(long = "copy", short = 'c', requires = "output-dir")]
-    pub copy: bool,
 
     /// Only check files and print actions don't change anything.
     #[clap(long = "show-others")]
@@ -90,19 +77,6 @@ pub struct OrganizeCommand {
     /// Prints timing information
     #[clap(long = "timings", short = 't')]
     pub timings: bool,
-}
-
-impl OrganizeCommand {
-    pub fn move_or_copy(&self) -> MoveOrCopy {
-        match self.copy {
-            false => MoveOrCopy::Move,
-            true => MoveOrCopy::Copy,
-        }
-    }
-
-    pub fn output_dir(&self) -> &Path {
-        self.output_dir.as_deref().unwrap_or(&self.music_dir)
-    }
 }
 
 fn music_dir_value_parser() -> impl TypedValueParser<Value = PathBuf> {
@@ -173,6 +147,18 @@ pub struct TranscodeCommand {
         default_value = "1",
     )]
     pub verbosity: u8,
+
+    /// Assumes yes as a answer for questions.
+    #[clap(long = "assume-yes", short = 'y')]
+    pub assume_yes: bool,
+
+    /// Only check files and print actions don't change anything.
+    #[clap(long = "dry-run", short = 'd', conflicts_with = "assume_yes")]
+    pub dry_run: bool,
+
+    /// Don't remove empty directories.
+    #[clap(long = "nocleanup")]
+    pub no_cleanup: bool,
 
     /// Prints timing information
     #[clap(long = "timings", short = 't')]

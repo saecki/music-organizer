@@ -9,12 +9,12 @@ mod transcode;
 mod update;
 mod util;
 
-pub use changes::Changes;
-pub use checks::Checks;
+pub use changes::{OrganizeChanges, TranscodeChanges};
+pub use checks::{Album, Artists, Checks};
 pub use cleanup::Cleanup;
-pub use fs::{DirCreation, MoveOrCopy, FileOperation, SongOperation};
+pub use fs::{CopyFileOp, CreateDirOp, DeleteDirOp, DeleteFileOp, MoveFileOp, SongOp};
 pub use index::{Item, MusicIndex};
-pub use meta::{Album, AudioFormat, Metadata, ReleaseArtists, Song};
-pub use transcode::transcode_songs;
+pub use meta::{AudioFormat, Metadata, Song};
+pub use transcode::{TranscodeFormat, TranscodeOp, transcode_songs};
 pub use update::{TagUpdate, Value};
-pub use util::*;
+pub(crate) use util::*;

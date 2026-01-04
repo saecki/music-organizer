@@ -2,7 +2,7 @@ use std::ffi::CString;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Context};
+use anyhow::{Context, bail};
 use crossbeam_channel::Sender;
 use opusmeta::LowercaseString;
 use rubato::Resampler;
@@ -13,21 +13,20 @@ use symphonia::core::io::{MediaSourceStream, MediaSourceStreamOptions};
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 
-use crate::thread::{worker_pool, Msg, WorkerState};
-use crate::{meta, AudioFormat, MusicIndex, Song};
+use crate::thread::{Msg, WorkerState, worker_pool};
+use crate::{AudioFormat, Song, meta};
 
 pub fn transcode_songs(
-    index: &MusicIndex,
-    output_dir: &Path,
-    f: &mut impl FnMut(TranscodeOp, anyhow::Result<()>),
+    transcode_ops: &[TranscodeOp],
+    mut f: impl FnMut(&TranscodeOp, anyhow::Result<()>),
 ) {
     let (item_sender, item_receiver) = crossbeam_channel::unbounded();
 
     let num_workers = std::thread::available_parallelism().unwrap().get().max(2) - 1;
     worker_pool(
         num_workers,
-        index.songs.iter(),
-        |_| TrancodeWorker { sender: item_sender.clone(), music_dir: index.root, output_dir },
+        transcode_ops.iter(),
+        |_| TrancodeWorker { sender: item_sender.clone() },
         || {
             while let Ok(Msg::Work((op, res))) = item_receiver.recv() {
                 f(op, res);
@@ -36,14 +35,41 @@ pub fn transcode_songs(
     );
 }
 
+struct TrancodeWorker<'a> {
+    sender: Sender<Msg<(&'a TranscodeOp<'a>, anyhow::Result<()>)>>,
+}
+
+impl<'a> WorkerState<&'a TranscodeOp<'a>> for TrancodeWorker<'a> {
+    fn work(
+        worker: &mut crate::thread::Worker<Self, &'a TranscodeOp<'a>>,
+        op: &'a TranscodeOp<'a>,
+    ) {
+        let res = op.execute();
+        worker.state.sender.send(Msg::Work((op, res))).unwrap();
+    }
+
+    fn stop(&mut self) {
+        self.sender.send(Msg::Stop).unwrap();
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TranscodeOp<'a> {
-    pub new_path: PathBuf,
     pub song: &'a Song,
-    pub format: Option<TranscodeFormat>,
+    pub new_path: PathBuf,
+    pub format: TranscodeFormat,
+}
+
+impl TranscodeOp<'_> {
+    pub fn execute(&self) -> anyhow::Result<()> {
+        let data = transcode_song(self.song, self.format)?;
+        std::fs::write(&self.new_path, &data)?;
+        Ok(())
+    }
 }
 
 /// The target format for transcoding songs.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TranscodeFormat {
     Opus,
 }
@@ -62,67 +88,6 @@ impl From<TranscodeFormat> for AudioFormat {
             TranscodeFormat::Opus => AudioFormat::Opus,
         }
     }
-}
-
-fn determine_transcode_format(song: &Song) -> Option<TranscodeFormat> {
-    match song.format {
-        AudioFormat::Flac => Some(TranscodeFormat::Opus),
-        AudioFormat::M4a => None,
-        AudioFormat::Mp3 => None,
-        AudioFormat::Opus => None,
-    }
-}
-
-struct TrancodeWorker<'a> {
-    sender: Sender<Msg<(TranscodeOp<'a>, anyhow::Result<()>)>>,
-    music_dir: &'a Path,
-    output_dir: &'a Path,
-}
-
-impl<'a> WorkerState<&'a Song> for TrancodeWorker<'a> {
-    fn work(worker: &mut crate::thread::Worker<Self, &'a Song>, song: &'a Song) {
-        let format = determine_transcode_format(song);
-
-        let sub_path = song
-            .path
-            .strip_prefix(worker.state.music_dir)
-            .expect("All songs should be located inside the `music-dir`");
-        let mut new_path = worker.state.output_dir.join(sub_path);
-        if let Some(format) = format {
-            new_path.set_extension(format.extension());
-        }
-
-        // TODO: Compute changes beforehand and display them.
-        if new_path.exists() {
-            return;
-        }
-
-        let op = TranscodeOp { new_path, song, format };
-        let res = execute_transcode_op(&op);
-
-        worker.state.sender.send(Msg::Work((op, res))).unwrap();
-    }
-
-    fn stop(&mut self) {
-        self.sender.send(Msg::Stop).unwrap();
-    }
-}
-
-fn execute_transcode_op(op: &TranscodeOp) -> anyhow::Result<()> {
-    if let Some(parent) = op.new_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-
-    match op.format {
-        Some(format) => {
-            let data = transcode_song(op.song, format)?;
-            std::fs::write(&op.new_path, &data)?;
-        }
-        None => {
-            std::fs::copy(&op.song.path, &op.new_path)?;
-        }
-    }
-    Ok(())
 }
 
 /// Trancodes a song by using:

@@ -5,27 +5,27 @@ use std::sync::atomic::AtomicUsize;
 
 use crossbeam_channel::Sender;
 
-use crate::fs::DirDeletion;
+use crate::DeleteDirOp;
 use crate::thread::{Msg, WorkerState, worker_pool};
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Cleanup {
-    pub dir_deletions: Vec<DirDeletion>,
-    pub music_dir: PathBuf,
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Cleanup<'a> {
+    pub root: &'a Path,
+    pub dir_deletions: Vec<DeleteDirOp>,
 }
 
-impl From<PathBuf> for Cleanup {
-    fn from(music_dir: PathBuf) -> Self {
-        Self { music_dir, ..Default::default() }
+impl<'a> Cleanup<'a> {
+    pub fn new(music_dir: &'a Path) -> Self {
+        Self { root: music_dir, dir_deletions: Vec::new() }
     }
 }
 
-impl Cleanup {
+impl Cleanup<'_> {
     pub fn check(&mut self, f: &mut impl FnMut(&Path)) {
         let idx = AtomicUsize::new(0);
         let (item_sender, item_receiver) = crossbeam_channel::unbounded();
 
-        let dir_path = self.music_dir.to_owned();
+        let dir_path = self.root.to_owned();
         let Ok(dir_iter) = std::fs::read_dir(&dir_path) else {
             return;
         };
@@ -62,15 +62,8 @@ impl Cleanup {
         for dir in dirs.into_iter() {
             let dir = dir.unwrap();
             if dir.empty {
-                self.dir_deletions.push(DirDeletion { path: dir.path });
+                self.dir_deletions.push(DeleteDirOp { path: dir.path });
             }
-        }
-    }
-
-    pub fn excecute(&self, f: &mut impl FnMut(&Path)) {
-        for d in &self.dir_deletions {
-            std::fs::remove_dir(&d.path).ok();
-            f(&d.path);
         }
     }
 

@@ -54,6 +54,21 @@ impl<'a> MusicIndex<'a> {
                 }
             },
         );
+
+        self.songs.sort_by(|a, b| a.path.cmp(&b.path));
+        self.unknown_songs.sort_by(|a, b| a.path.cmp(&b.path));
+        self.images.sort();
+        self.other.sort();
+    }
+
+    pub fn all_paths_iter(&self) -> impl Iterator<Item = &Path> {
+        (self.songs.iter().map(|s| s.path.as_path())).chain(self.non_song_paths_iter())
+    }
+
+    pub fn non_song_paths_iter(&self) -> impl Iterator<Item = &Path> {
+        (self.unknown_songs.iter().map(|s| s.path.as_path()))
+            .chain(self.images.iter().map(|s| s.as_path()))
+            .chain(self.other.iter().map(|s| s.as_path()))
     }
 }
 

@@ -1,8 +1,8 @@
 use std::path::Path;
 
+use id3::TagLike;
 use id3::frame::Picture;
 use id3::frame::PictureType as Id3PictureType;
-use id3::TagLike;
 use metaflac::block::PictureType as FlacPictureType;
 use mp4ameta::Img;
 

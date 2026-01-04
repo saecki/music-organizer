@@ -7,86 +7,54 @@ use indexmap::IndexMap;
 
 use crate::fs::{fast_path_eq, valid_os_str, valid_os_str_dots};
 use crate::{
-    Checks, DirCreation, FileOperation, MoveOrCopy, MusicIndex, Song, SongOperation, util,
+    AudioFormat, Checks, CopyFileOp, CreateDirOp, DeleteFileOp, DirState, MoveFileOp, MusicIndex,
+    Song, SongOp, TranscodeFormat, TranscodeOp, util,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Changes<'a> {
-    pub move_or_copy: MoveOrCopy,
+pub struct OrganizeChanges<'a> {
     pub index: &'a MusicIndex<'a>,
-    pub dir_creations: Vec<DirCreation>,
-    pub song_operations: IndexMap<*const Song, SongOperation<'a>>,
-    pub file_operations: Vec<FileOperation<'a>>,
+    dir_creations: IndexMap<CreateDirOp, DirState>,
+    pub song_ops: IndexMap<*const Song, SongOp<'a>>,
+    pub move_ops: Vec<MoveFileOp<'a>>,
 }
 
-impl<'a> Changes<'a> {
-    pub fn organize(checks: Checks<'a>, output_dir: &Path, move_or_copy: MoveOrCopy) -> Self {
-        let mut changes = Changes {
-            move_or_copy,
+impl<'a> OrganizeChanges<'a> {
+    pub fn generate(checks: Checks<'a>) -> Self {
+        let mut changes = Self {
             index: checks.index,
-            dir_creations: Vec::new(),
-            song_operations: checks.song_operations,
-            file_operations: Vec::new(),
+            dir_creations: IndexMap::new(),
+            song_ops: checks.song_operations,
+            move_ops: Vec::new(),
         };
-        organize_diff(&mut changes, output_dir);
+        organize_diff(&mut changes);
         changes
+    }
+    pub fn dir_creations(&self) -> impl Iterator<Item = &CreateDirOp> {
+        self.dir_creations
+            .iter()
+            .filter_map(|(dc, state)| (*state == DirState::Missing).then_some(dc))
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.dir_creations.is_empty() && self.song_ops.is_empty() && self.move_ops.is_empty()
     }
 
     fn new_song_path(&self, song: &'a Song) -> &Path {
-        self.song_operations
+        self.song_ops
             .get(&(song as *const _))
             .and_then(|op| op.new_path.as_ref())
             .unwrap_or(&song.path)
     }
-
-    fn dir_creation(&mut self, path: &Path) -> bool {
-        if !self.dir_creations.iter().any(|d| fast_path_eq(&d.path, path)) && !path.exists() {
-            self.dir_creations.push(DirCreation { path: path.to_owned() });
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn execute_dir_creations(&self, mut f: impl FnMut(&DirCreation, std::io::Result<()>)) {
-        for dc in self.dir_creations.iter() {
-            let res = dc.execute();
-            f(dc, res);
-        }
-    }
-
-    pub fn execute_song_operations(&self, mut f: impl FnMut(&SongOperation, anyhow::Result<()>)) {
-        for op in self.song_operations.values() {
-            let res = op.execute(self.move_or_copy);
-            f(op, res);
-        }
-    }
-
-    pub fn execute_file_operations(&self, mut f: impl FnMut(&FileOperation, anyhow::Result<()>)) {
-        for op in self.file_operations.iter() {
-            let res = op.execute(self.move_or_copy);
-            f(op, res);
-        }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.dir_creations.is_empty()
-            && self.song_operations.is_empty()
-            && self.file_operations.is_empty()
-    }
 }
 
-fn organize_diff(changes: &mut Changes, output_dir: &Path) {
-    if !output_dir.exists() {
-        changes.dir_creations.push(DirCreation { path: output_dir.to_owned() })
-    }
-
+fn organize_diff(changes: &mut OrganizeChanges) {
     let mut release_dirs = BTreeMap::<&OsStr, Vec<&Song>>::new();
     for song in changes.index.songs.iter() {
         let parent_dir = song.path.parent().unwrap();
         release_dirs.entry(parent_dir.as_os_str()).or_default().push(song);
 
-        let op = changes.song_operations.get_mut(&(song as *const Song));
+        let op = changes.song_ops.get_mut(&(song as *const Song));
         let tag_update = op.and_then(|op| op.tag_update.as_ref());
 
         let release_artists = tag_update
@@ -116,15 +84,15 @@ fn organize_diff(changes: &mut Changes, output_dir: &Path) {
         let track =
             tag_update.and_then(|t| t.track_number.num_value()).or(song.track_number).unwrap_or(0);
 
-        let mut path = output_dir.join(release_artists);
+        let mut path = changes.index.root.join(release_artists);
 
         if !song.path.starts_with(&path) {
-            changes.dir_creation(&path);
+            util::create_dir_op(&mut changes.dir_creations, &path);
         }
 
         path.push(&release);
         if !song.path.starts_with(&path) {
-            changes.dir_creation(&path);
+            util::create_dir_op(&mut changes.dir_creations, &path);
         }
 
         let mut file_name = String::new();
@@ -136,7 +104,7 @@ fn organize_diff(changes: &mut Changes, output_dir: &Path) {
         path.push(file_name);
 
         if path != song.path {
-            util::update_song_op(&mut changes.song_operations, song, |op| op.new_path = Some(path));
+            util::update_song_op(&mut changes.song_ops, song, |op| op.new_path = Some(path));
         }
     }
 
@@ -164,21 +132,153 @@ fn organize_diff(changes: &mut Changes, output_dir: &Path) {
 
             if all_equal {
                 let new_path = new_song_dir.join(image.file_name().unwrap());
-                changes.file_operations.push(FileOperation { old_path: image, new_path });
+                changes.move_ops.push(MoveFileOp { old_path: image, new_path });
             }
         }
     }
 
     if !changes.index.unknown_songs.is_empty() {
-        let unknown_dir = output_dir.join("unknown");
-        changes.dir_creation(&unknown_dir);
+        let unknown_dir = changes.index.root.join("unknown");
+        util::create_dir_op(&mut changes.dir_creations, &unknown_dir);
 
         for unknown in changes.index.unknown_songs.iter() {
             let new_path = unknown_dir.join(unknown.path.file_name().unwrap());
 
             if new_path != unknown.path {
-                changes.file_operations.push(FileOperation { old_path: &unknown.path, new_path });
+                changes.move_ops.push(MoveFileOp { old_path: &unknown.path, new_path });
             }
         }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TranscodeChanges<'a> {
+    /// The index of the directory that should be transcoded.
+    pub a: &'a MusicIndex<'a>,
+    /// The index of the directory in which the transcoded songs should be placed.
+    pub b: &'a MusicIndex<'a>,
+    pub dir_creations: IndexMap<CreateDirOp, DirState>,
+    pub transcode_ops: Vec<TranscodeOp<'a>>,
+    pub copy_ops: Vec<CopyFileOp<'a>>,
+    pub delete_ops: Vec<DeleteFileOp<'a>>,
+}
+
+impl<'a> TranscodeChanges<'a> {
+    pub fn generate(a: &'a MusicIndex<'a>, b: &'a MusicIndex<'a>) -> Self {
+        let mut changes = Self {
+            a,
+            b,
+            dir_creations: IndexMap::new(),
+            transcode_ops: Vec::new(),
+            copy_ops: Vec::new(),
+            delete_ops: Vec::new(),
+        };
+        transcode_diff(&mut changes);
+        changes
+    }
+
+    pub fn dir_creations(&self) -> impl Iterator<Item = &CreateDirOp> {
+        self.dir_creations
+            .iter()
+            .filter_map(|(dc, state)| (*state == DirState::Missing).then_some(dc))
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.dir_creations.is_empty()
+            && self.transcode_ops.is_empty()
+            && self.copy_ops.is_empty()
+            && self.delete_ops.is_empty()
+    }
+}
+
+fn transcode_diff(changes: &mut TranscodeChanges) {
+    // Build lookup table for relative paths in the target directory.
+    let mut target_files = IndexMap::new();
+    for full_path in changes.b.all_paths_iter() {
+        let sub_path = full_path.strip_prefix(changes.b.root).unwrap();
+        target_files.insert(sub_path, MarkedFile { full_path, marked: false });
+    }
+
+    // TODO: Generate dir Creations.
+
+    // Transcode or copy songs.
+    for song in changes.a.songs.iter() {
+        let format = match song.format {
+            AudioFormat::Flac => Some(TranscodeFormat::Opus),
+            AudioFormat::M4a => None,
+            AudioFormat::Mp3 => None,
+            AudioFormat::Opus => None,
+        };
+        let sub_path = song.path.strip_prefix(changes.a.root).unwrap();
+        if let Some(format) = format {
+            let mut sub_path = sub_path.to_path_buf();
+            sub_path.set_extension(format.extension());
+
+            if !try_mark_path(&mut target_files, &sub_path) {
+                let new_path = changes.b.root.join(sub_path);
+                create_parents(changes, &new_path);
+                changes.transcode_ops.push(TranscodeOp { song, new_path, format });
+            }
+        } else {
+            // Don't transcode, only copy song.
+            if !try_mark_path(&mut target_files, sub_path) {
+                let new_path = changes.b.root.join(sub_path);
+                create_parents(changes, &new_path);
+                changes.copy_ops.push(CopyFileOp { old_path: &song.path, new_path });
+            }
+        }
+    }
+
+    // Copy files.
+    for path in changes.a.non_song_paths_iter() {
+        let sub_path = path.strip_prefix(changes.a.root).unwrap();
+        if !try_mark_path(&mut target_files, sub_path) {
+            let new_path = changes.b.root.join(sub_path);
+            create_parents(changes, &new_path);
+            changes.copy_ops.push(CopyFileOp { old_path: path, new_path });
+        }
+    }
+
+    // Delete files.
+    for file in target_files.values() {
+        if !file.marked {
+            changes.delete_ops.push(DeleteFileOp { path: file.full_path });
+        }
+    }
+}
+
+fn create_parents(changes: &mut TranscodeChanges, new_path: &Path) {
+    let mut parent = new_path.parent();
+    let start_idx = changes.dir_creations.len();
+    while let Some(dir) = parent
+        && !fast_path_eq(dir, changes.b.root)
+    {
+        if !util::create_dir_op(&mut changes.dir_creations, dir) {
+            break;
+        }
+        parent = dir.parent();
+    }
+
+    // Ideally we could just call reverse on the slice, but `indexmap`s slice
+    // type doesn't support that.
+    let n = changes.dir_creations[start_idx..].len();
+    let head = (0..n / 2).map(|i| start_idx + i);
+    let tail = (n.div_ceil(2)..n).rev().map(|i| start_idx + i);
+    for (a, b) in head.zip(tail) {
+        changes.dir_creations.swap_indices(a, b);
+    }
+}
+
+struct MarkedFile<'a> {
+    full_path: &'a Path,
+    marked: bool,
+}
+
+fn try_mark_path(target_files: &mut IndexMap<&Path, MarkedFile<'_>>, path: &Path) -> bool {
+    if let Some(file) = target_files.get_mut(path) {
+        file.marked = true;
+        true
+    } else {
+        false
     }
 }

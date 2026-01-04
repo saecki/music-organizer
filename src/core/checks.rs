@@ -1,16 +1,28 @@
 use indexmap::IndexMap;
 
-use crate::{Album, MusicIndex, ReleaseArtists, Song, SongOperation, Value, util};
+use crate::{MusicIndex, Song, SongOp, Value, util};
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Artists<'a> {
+    pub names: &'a [String],
+    pub releases: Vec<Album<'a>>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Album<'a> {
+    pub name: &'a str,
+    pub songs: Vec<&'a Song>,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Checks<'a> {
     pub index: &'a MusicIndex<'a>,
-    pub song_operations: IndexMap<*const Song, SongOperation<'a>>,
-    pub artists: Vec<ReleaseArtists<'a>>,
+    pub song_operations: IndexMap<*const Song, SongOp<'a>>,
+    pub artists: Vec<Artists<'a>>,
 }
 
-impl<'a> From<&'a MusicIndex<'a>> for Checks<'a> {
-    fn from(index: &'a MusicIndex<'a>) -> Self {
+impl<'a> Checks<'a> {
+    pub fn new(index: &'a MusicIndex<'a>) -> Self {
         let mut new = Self { index, song_operations: IndexMap::new(), artists: Vec::new() };
         new.update_index();
         new
@@ -41,7 +53,7 @@ impl<'a> Checks<'a> {
             }
 
             if !added {
-                self.artists.push(ReleaseArtists {
+                self.artists.push(Artists {
                     names: &s.album_artists,
                     releases: vec![Album { name: &s.album, songs: vec![s] }],
                 });
@@ -83,7 +95,7 @@ impl<'a> Checks<'a> {
 
     pub fn check_inconsitent_release_artists(
         &mut self,
-        f: fn(&ReleaseArtists, &ReleaseArtists) -> Value<Vec<String>>,
+        f: fn(&Artists, &Artists) -> Value<Vec<String>>,
     ) {
         let mut offset = 1;
         for ar1 in self.artists.iter() {

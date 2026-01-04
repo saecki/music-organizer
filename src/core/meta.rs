@@ -6,18 +6,6 @@ use std::path::{Path, PathBuf};
 use anyhow::bail;
 use id3::TagLike;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct ReleaseArtists<'a> {
-    pub names: &'a [String],
-    pub releases: Vec<Album<'a>>,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Album<'a> {
-    pub name: &'a str,
-    pub songs: Vec<&'a Song>,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AudioFormat {
     Flac,
