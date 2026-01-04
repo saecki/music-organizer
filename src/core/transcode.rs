@@ -267,7 +267,7 @@ fn transcode_to_opus(
         channels.count(),
         opusenc::MappingFamily::MonoStereo,
     )?;
-    encoder.set_bitrate(opusenc::Bitrate::Bits(OPUS_BITRATE))?;
+    encoder.set_bitrate(OPUS_BITRATE)?;
 
     // Encode into ogg/opus container.
     let mut output = Vec::new();

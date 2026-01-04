@@ -628,8 +628,9 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "opusenc"
-version = "0.3.0"
-source = "git+https://github.com/Saecki/opusenc-rs?rev=5fce28a#5fce28aea26cdc019fed3272637a3534e93074c1"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a299f696ae6ae35f549d6705730ea275cf8290ee11a0230370662cff028f91ca"
 dependencies = [
  "cstr8",
  "num_enum",
@@ -639,7 +640,8 @@ dependencies = [
 [[package]]
 name = "opusenc-sys"
 version = "0.3.0"
-source = "git+https://github.com/Saecki/opusenc-rs?rev=5fce28a#5fce28aea26cdc019fed3272637a3534e93074c1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "528fe71bcb2e216e6ee6b36e1e35826505c38ab75b0f599ec818dd9e15c198c4"
 dependencies = [
  "bindgen",
  "pkg-config",

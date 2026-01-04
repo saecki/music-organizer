@@ -39,4 +39,4 @@ rubato = { git = "https://github.com/HEnquist/rubato", rev = "fb96613" }
 audioadapter = "2.0.0"
 audioadapter-buffers = "2.0.0"
 audioadapter-sample = "2.0.0"
-opusenc = { git = "https://github.com/Saecki/opusenc-rs", rev = "5fce28a" }
+opusenc = { version = "0.3.1", features = ["encoder-options"] }
