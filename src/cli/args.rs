@@ -19,7 +19,7 @@ pub struct Args {
 #[derive(Subcommand)]
 #[command()]
 pub enum Command {
-    /// Moves/copies, renames and retags Music files using their metadata.
+    /// Moves, renames and retags Music files using their metadata.
     Organize(OrganizeCommand),
 
     /// Transcodes FLAC songs to OPUS.
