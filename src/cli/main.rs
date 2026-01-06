@@ -585,8 +585,7 @@ fn display_deletions(cleanup: &Cleanup, verbosity: u8) {
     if verbose {
         print_subtitle(SUBTITLE_DIRS);
 
-        for (i, d) in cleanup.dir_deletions.iter().enumerate() {
-            let n = i + 1;
+        for (d, n) in cleanup.dir_deletions.iter().zip(1..) {
             let path = d.path.display();
             println!("{ANSII_BLUE}{n}{ANSII_CLEAR} delete {ANSII_RED}{path}{ANSII_RED}");
         }
@@ -859,9 +858,9 @@ fn options_input(str: &str, options: &[&str]) -> usize {
 
         for (i, s) in options.iter().enumerate() {
             if options.len() < 10 {
-                println!("[{}] {}", i, s.replace("\n", "\n    "));
+                println!("[{i}] {}", s.replace("\n", "\n    "));
             } else {
-                println!("[{:02}] {}", i, s.replace("\n", "\n     "));
+                println!("[{i:02}] {}", s.replace("\n", "\n     "));
             }
         }
 
