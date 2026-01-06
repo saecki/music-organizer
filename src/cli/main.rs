@@ -729,7 +729,7 @@ pub fn display_create_dir_ops<'a>(
 }
 
 pub fn display_delete_dir_ops(title: &str, dir_deletions: &[DeleteDirOp], verbose: bool) {
-    for (dc, n) in dir_deletions.iter().zip(1..) {
+    for (dc, n) in dir_deletions.iter().rev().zip(1..) {
         let path = dc.path.display();
         match dc.execute() {
             Ok(()) => {
