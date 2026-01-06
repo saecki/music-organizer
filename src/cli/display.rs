@@ -157,7 +157,7 @@ fn format_move_file_op(
     let (operation, new) = if just_rename {
         (tense.rename(), Path::new(new_path.file_name().unwrap()).display())
     } else {
-        (tense.move_(), strip_dir(music_dir, new_path))
+        (tense.move_(), strip_dir(new_path, music_dir))
     };
     write!(f, "{operation} {ANSII_YELLOW}{old}{ANSII_CLEAR} to {ANSII_GREEN}{new}{ANSII_CLEAR}")?;
 
