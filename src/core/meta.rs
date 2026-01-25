@@ -2,6 +2,7 @@ use std::ffi::OsStr;
 use std::fmt::Display;
 use std::fs::{File, Permissions};
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 use anyhow::bail;
 use id3::TagLike;
@@ -57,6 +58,7 @@ pub struct Song {
     pub album: String,
     pub title: String,
     pub genres: Vec<String>,
+    pub date: Option<Date>,
     pub has_artwork: bool,
 }
 
@@ -84,6 +86,7 @@ impl TryFrom<(PathBuf, AudioFormat, Metadata)> for Song {
             album: album.to_owned(),
             title: title.to_owned(),
             genres: meta.genres,
+            date: meta.date,
             has_artwork: meta.has_artwork,
             path,
         })
@@ -109,6 +112,7 @@ pub struct Metadata {
     pub album: Option<String>,
     pub title: Option<String>,
     pub genres: Vec<String>,
+    pub date: Option<Date>,
     pub has_artwork: bool,
 }
 
@@ -140,6 +144,7 @@ impl Metadata {
             album: vorbis.album().map(|v| v[0].clone()),
             title: vorbis.title().map(|v| v[0].clone()),
             genres: vorbis.genre().map_or_else(Vec::new, |v| v.clone()),
+            date: vorbis.get("DATE").and_then(|v| v.first()?.parse().ok()),
             has_artwork: tag.pictures().count() > 0,
         })
     }
@@ -165,6 +170,7 @@ impl Metadata {
             album: tag.take_album(),
             title: tag.take_title(),
             genres: tag.take_genres().collect(),
+            date: tag.year().and_then(|date| Date::from_str(date).ok()),
             has_artwork: tag.artwork().is_some(),
         })
     }
@@ -187,6 +193,7 @@ impl Metadata {
             album: tag.album().map(|s| s.to_string()),
             title: tag.title().map(|s| s.to_string()),
             genres: tag.genre().map(nul_separated).unwrap_or_default(),
+            date: tag.date_recorded().or_else(|| tag.date_released()).map(Date::from),
             has_artwork: tag.pictures().count() > 0,
         })
     }
@@ -210,6 +217,7 @@ impl Metadata {
             album: tag.get_one(&opus::ALBUM).cloned(),
             title: tag.get_one(&opus::TITLE).cloned(),
             genres: tag.get(&opus::GENRE).map_or_else(Vec::new, |v| v.clone()),
+            date: tag.get_one(&opus::DATE).and_then(|date| date.parse().ok()),
             has_artwork: tag.iter_pictures().and_then(|mut iter| iter.next()).is_some(),
         })
     }
@@ -232,6 +240,45 @@ impl Metadata {
         } else {
             None
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Date {
+    pub year: i32,
+    pub month: Option<u8>,
+    pub day: Option<u8>,
+}
+
+impl FromStr for Date {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let timestamp = id3::Timestamp::from_str(s).map_err(|_| ())?;
+        Ok(Date::from(timestamp))
+    }
+}
+
+impl From<id3::Timestamp> for Date {
+    fn from(timestamp: id3::Timestamp) -> Self {
+        Date { year: timestamp.year, month: timestamp.month, day: timestamp.day }
+    }
+}
+
+impl Display for Date {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self { year, month, day } = self;
+        write!(f, "{year:04}")?;
+
+        if let Some(month) = month {
+            write!(f, "-{month:02}")?;
+
+            if let Some(day) = day {
+                write!(f, "-{day:02}")?;
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -355,4 +402,5 @@ pub mod opus {
     key!(ALBUM = "album");
     key!(TITLE = "title");
     key!(GENRE = "genre");
+    key!(DATE = "date");
 }

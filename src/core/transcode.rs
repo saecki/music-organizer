@@ -212,6 +212,7 @@ fn transcode_to_opus(
         for genre in song.genres.iter() {
             add_vorbis(&mut comments, &meta::opus::GENRE, Some(genre))?;
         }
+        add_vorbis(&mut comments, &meta::opus::DATE, song.date)?;
         if song.has_artwork {
             let image = meta::read_image_from(&song.path, song.format)?;
             comments.add_picture_from_memory(
