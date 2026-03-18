@@ -71,7 +71,7 @@ impl<'a> Checks<'a> {
                 // FIXME: kinda hacky
                 let song_dir = song.path.parent().unwrap();
                 let external_cover =
-                    self.index.images.iter().any(|image_path| image_path.starts_with(song_dir));
+                    self.index.images.iter().any(|image| image.path.starts_with(song_dir));
                 if !external_cover {
                     continue;
                 }
@@ -83,14 +83,13 @@ impl<'a> Checks<'a> {
 
     pub fn check_file_permissions(&mut self) {
         for song in self.index.songs.iter() {
-            if let Some(mode) = song.mode
-                && mode.permissions() != 0o755
-            {
+            if song.meta.mode.permissions() != 0o755 {
                 util::update_song_op(&mut self.song_operations, song, |op| {
-                    op.mode_update = Some(mode.with_permissions(0o755));
+                    op.mode_update = Some(song.meta.mode.with_permissions(0o755));
                 });
             }
         }
+        // TODO: Also check non-song files here.
     }
 
     pub fn check_inconsitent_release_artists(

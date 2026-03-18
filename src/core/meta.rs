@@ -3,9 +3,34 @@ use std::fmt::Display;
 use std::fs::{File, Permissions};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::time::SystemTime;
 
 use anyhow::bail;
 use id3::TagLike;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FilePath<P> {
+    pub path: P,
+    pub meta: Metadata,
+}
+
+impl FilePath<PathBuf> {
+    pub fn as_file_ref(&self) -> FilePath<&Path> {
+        FilePath { path: self.path.as_path(), meta: self.meta }
+    }
+}
+
+impl<P: Ord> Ord for FilePath<P> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.path.cmp(&other.path)
+    }
+}
+
+impl<P: Ord> PartialOrd for FilePath<P> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(&other))
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AudioFormat {
@@ -48,7 +73,7 @@ impl Display for AudioFormat {
 pub struct Song {
     pub path: PathBuf,
     pub format: AudioFormat,
-    pub mode: Option<Mode>,
+    pub meta: Metadata,
     pub track_number: Option<u16>,
     pub total_tracks: Option<u16>,
     pub disc_number: Option<u16>,
@@ -62,34 +87,39 @@ pub struct Song {
     pub has_artwork: bool,
 }
 
-impl TryFrom<(PathBuf, AudioFormat, Metadata)> for Song {
-    type Error = IncompleteSong;
-
-    fn try_from(
-        (path, format, meta): (PathBuf, AudioFormat, Metadata),
-    ) -> Result<Self, Self::Error> {
+impl Song {
+    pub fn try_from(
+        path: PathBuf,
+        format: AudioFormat,
+        meta: Metadata,
+        tags: Tags,
+    ) -> Result<Self, IncompleteSong> {
         let (Some(album_artists), Some(song_artists), Some(album), Some(title)) =
-            (meta.album_artists(), meta.song_artists(), meta.album.as_ref(), meta.title.as_ref())
+            (tags.album_artists(), tags.song_artists(), tags.album.as_ref(), tags.title.as_ref())
         else {
-            return Err(IncompleteSong { path, format, meta });
+            return Err(IncompleteSong { path, format, meta, tags });
         };
 
         Ok(Song {
             format,
-            mode: meta.mode,
-            track_number: meta.track_number,
-            total_tracks: meta.total_tracks,
-            disc_number: meta.disc_number,
-            total_discs: meta.total_discs,
+            meta,
+            track_number: tags.track_number,
+            total_tracks: tags.total_tracks,
+            disc_number: tags.disc_number,
+            total_discs: tags.total_discs,
             album_artists: album_artists.to_owned(),
             artists: song_artists.to_owned(),
             album: album.to_owned(),
             title: title.to_owned(),
-            genres: meta.genres,
-            date: meta.date,
-            has_artwork: meta.has_artwork,
+            genres: tags.genres,
+            date: tags.date,
+            has_artwork: tags.has_artwork,
             path,
         })
+    }
+
+    pub fn as_file_ref(&self) -> FilePath<&Path> {
+        FilePath { path: self.path.as_path(), meta: self.meta }
     }
 }
 
@@ -98,11 +128,17 @@ pub struct IncompleteSong {
     pub path: PathBuf,
     pub format: AudioFormat,
     pub meta: Metadata,
+    pub tags: Tags,
+}
+
+impl IncompleteSong {
+    pub fn as_file_ref(&self) -> FilePath<&Path> {
+        FilePath { path: self.path.as_path(), meta: self.meta }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Metadata {
-    pub mode: Option<Mode>,
+pub struct Tags {
     pub track_number: Option<u16>,
     pub total_tracks: Option<u16>,
     pub disc_number: Option<u16>,
@@ -116,17 +152,14 @@ pub struct Metadata {
     pub has_artwork: bool,
 }
 
-impl Metadata {
-    pub fn read_from(path: &Path, format: AudioFormat) -> anyhow::Result<Self> {
-        let mut file = File::open(path)?;
-        let mode = Mode::read(&file)?;
-        let meta = match format {
-            AudioFormat::Flac => Self::read_flac(&mut file),
-            AudioFormat::M4a => Self::read_mp4(&mut file),
-            AudioFormat::Mp3 => Self::read_mp3(&mut file),
-            AudioFormat::Opus => Self::read_opus(&mut file),
-        }?;
-        Ok(Self { mode: Some(mode), ..meta })
+impl Tags {
+    pub fn read_from(file: &mut File, format: AudioFormat) -> anyhow::Result<Self> {
+        match format {
+            AudioFormat::Flac => Tags::read_flac(file),
+            AudioFormat::M4a => Tags::read_mp4(file),
+            AudioFormat::Mp3 => Tags::read_mp3(file),
+            AudioFormat::Opus => Tags::read_opus(file),
+        }
     }
 
     fn read_flac(file: &mut File) -> anyhow::Result<Self> {
@@ -134,7 +167,6 @@ impl Metadata {
         let Some(vorbis) = tag.vorbis_comments() else { return Ok(Self::default()) };
 
         Ok(Self {
-            mode: None,
             track_number: zero_none(vorbis.track().map(|u| u as u16)),
             total_tracks: zero_none(vorbis.total_tracks().map(|u| u as u16)),
             disc_number: zero_none(vorbis.get("DISCNUMBER").and_then(|d| d[0].parse().ok())),
@@ -160,7 +192,6 @@ impl Metadata {
         };
         let mut tag = mp4ameta::Tag::read_with(file, &cfg)?;
         Ok(Self {
-            mode: None,
             track_number: tag.track_number(),
             total_tracks: tag.total_tracks(),
             disc_number: tag.disc_number(),
@@ -183,7 +214,6 @@ impl Metadata {
         }
 
         Ok(Self {
-            mode: None,
             track_number: zero_none(tag.track().map(|u| u as u16)),
             total_tracks: zero_none(tag.total_tracks().map(|u| u as u16)),
             disc_number: zero_none(tag.disc().map(|u| u as u16)),
@@ -201,7 +231,6 @@ impl Metadata {
     fn read_opus(file: &mut File) -> anyhow::Result<Self> {
         let tag = opusmeta::Tag::read_from(file)?;
         Ok(Self {
-            mode: None,
             track_number: tag.get_one(&opus::TRACKNUMBER).and_then(|s| s.parse().ok()),
             total_tracks: tag
                 .get_one(&opus::TOTALTRACKS)
@@ -314,6 +343,23 @@ pub fn read_image_from(path: &Path, format: AudioFormat) -> anyhow::Result<Vec<u
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Metadata {
+    pub timestamp: SystemTime,
+    pub mode: Mode,
+}
+
+impl Metadata {
+    pub fn read(file: &mut File) -> anyhow::Result<Self> {
+        use std::os::unix::fs::MetadataExt;
+        let meta = file.metadata()?;
+        let timestamp = meta.modified()?;
+        let mode = Mode(meta.mode());
+
+        Ok(Self { timestamp, mode })
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Mode(pub u32);
 
@@ -349,13 +395,6 @@ impl std::fmt::Display for Mode {
 }
 
 impl Mode {
-    pub fn read(file: &File) -> std::io::Result<Mode> {
-        use std::os::unix::fs::MetadataExt;
-
-        let meta = file.metadata()?;
-        Ok(Mode(meta.mode()))
-    }
-
     pub fn write(&self, path: &Path) -> anyhow::Result<()> {
         use std::os::unix::fs::PermissionsExt;
 

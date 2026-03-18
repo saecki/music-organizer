@@ -401,19 +401,14 @@ fn display_indexing(index: &mut MusicIndex, verbosity: u8, show_others: bool) {
 
         let path = strip_dir(item.path(), music_dir);
         match item {
-            Item::Other(_) if show_others => {
-                print_verbose!(
-                    false,
-                    TITLE_INDEXING,
-                    "{ANSII_BLUE}{i}{ANSII_CLEAR} other file {ANSII_YELLOW}{path}{ANSII_CLEAR}\n",
-                );
+            Item::Error(_, err) => {
+                print_failed_op!(TITLE_INDEXING, i, "{ANSII_YELLOW}{path}{ANSII_CLEAR}", err);
+            }
+            Item::Other(..) if show_others => {
+                print_op!(false, TITLE_INDEXING, i, "other {ANSII_YELLOW}{path}{ANSII_CLEAR}\n");
             }
             _ => {
-                print_verbose!(
-                    verbose,
-                    TITLE_INDEXING,
-                    "{ANSII_BLUE}{i} {ANSII_YELLOW}{path}{ANSII_CLEAR}",
-                );
+                print_op!(verbose, TITLE_INDEXING, i, "{ANSII_YELLOW}{path}{ANSII_CLEAR}");
             }
         };
     });

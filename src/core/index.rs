@@ -1,8 +1,9 @@
 use crossbeam_channel::Sender;
+use std::fs::File;
 use std::path::{Path, PathBuf};
 
 use crate::fs::is_image_extension;
-use crate::meta::IncompleteSong;
+use crate::meta::{FilePath, IncompleteSong, Tags};
 use crate::thread::{Msg, Worker, WorkerState, worker_pool};
 use crate::{AudioFormat, Metadata, Song};
 
@@ -10,12 +11,12 @@ use crate::{AudioFormat, Metadata, Song};
 pub struct MusicIndex<'a> {
     /// The root directory from which the index has been built.
     pub root: &'a Path,
-    /// Songs that have all relevant metadata.
+    /// Songs that have all relevant tags.
     pub songs: Vec<Song>,
-    /// Songs that are missing some necessary metadata.
+    /// Songs that are missing some necessary tags.
     pub unknown_songs: Vec<IncompleteSong>,
-    pub images: Vec<PathBuf>,
-    pub other: Vec<PathBuf>,
+    pub images: Vec<FilePath<PathBuf>>,
+    pub other: Vec<FilePath<PathBuf>>,
 }
 
 impl<'a> MusicIndex<'a> {
@@ -42,14 +43,15 @@ impl<'a> MusicIndex<'a> {
                 while let Ok(Msg::Work(item)) = item_receiver.recv() {
                     f(&item);
                     match item {
-                        Item::Song((path, format, meta)) => {
-                            match Song::try_from((path, format, meta)) {
+                        Item::Song(path, meta, format, tags) => {
+                            match Song::try_from(path, format, meta, tags) {
                                 Ok(song) => self.songs.push(song),
                                 Err(unknown_song) => self.unknown_songs.push(unknown_song),
                             }
                         }
-                        Item::Image(path) => self.images.push(path),
-                        Item::Other(path) => self.other.push(path),
+                        Item::Image(path, meta) => self.images.push(FilePath { path, meta }),
+                        Item::Other(path, meta) => self.other.push(FilePath { path, meta }),
+                        Item::Error(..) => (),
                     }
                 }
             },
@@ -61,29 +63,31 @@ impl<'a> MusicIndex<'a> {
         self.other.sort();
     }
 
-    pub fn all_paths_iter(&self) -> impl Iterator<Item = &Path> {
-        (self.songs.iter().map(|s| s.path.as_path())).chain(self.non_song_paths_iter())
+    pub fn all_files_iter(&self) -> impl Iterator<Item = FilePath<&Path>> {
+        (self.songs.iter().map(|s| s.as_file_ref())).chain(self.non_song_files_iter())
     }
 
-    pub fn non_song_paths_iter(&self) -> impl Iterator<Item = &Path> {
-        (self.unknown_songs.iter().map(|s| s.path.as_path()))
-            .chain(self.images.iter().map(|s| s.as_path()))
-            .chain(self.other.iter().map(|s| s.as_path()))
+    pub fn non_song_files_iter(&self) -> impl Iterator<Item = FilePath<&Path>> {
+        (self.unknown_songs.iter().map(|s| s.as_file_ref()))
+            .chain(self.images.iter().map(|s| s.as_file_ref()))
+            .chain(self.other.iter().map(|s| s.as_file_ref()))
     }
 }
 
 pub enum Item {
-    Song((PathBuf, AudioFormat, Metadata)),
-    Image(PathBuf),
-    Other(PathBuf),
+    Song(PathBuf, Metadata, AudioFormat, Tags),
+    Image(PathBuf, Metadata),
+    Other(PathBuf, Metadata),
+    Error(PathBuf, anyhow::Error),
 }
 
 impl Item {
     pub fn path(&self) -> &Path {
         match self {
-            Self::Song((path, ..)) => path,
-            Self::Image(path) => path,
-            Self::Other(path) => path,
+            Self::Song(path, ..) => path,
+            Self::Image(path, ..) => path,
+            Self::Other(path, ..) => path,
+            Self::Error(path, ..) => path,
         }
     }
 }
@@ -116,23 +120,40 @@ impl WorkerState<PathBuf> for MusicIndexBuilder {
 }
 
 impl MusicIndexBuilder {
-    fn add_item(&mut self, p: PathBuf) {
-        let Some(extension) = p.extension() else {
-            self.send_item(Item::Other(p));
+    fn add_item(&mut self, path: PathBuf) {
+        let (mut file, meta) = match open_file(&path) {
+            Ok(f) => f,
+            Err(err) => {
+                self.send_item(Item::Error(path, err));
+                return;
+            }
+        };
+
+        let Some(extension) = path.extension() else {
+            self.send_item(Item::Other(path, meta));
             return;
         };
 
         if let Some(format) = AudioFormat::from_extension(extension) {
-            let m = Metadata::read_from(&p, format);
-            self.send_item(Item::Song((p, format, m.unwrap_or_default())));
+            let item = match Tags::read_from(&mut file, format) {
+                Ok(tags) => Item::Song(path, meta, format, tags),
+                Err(err) => Item::Error(path, err),
+            };
+            self.send_item(item);
         } else if is_image_extension(extension) {
-            self.send_item(Item::Image(p));
+            self.send_item(Item::Image(path, meta));
         } else {
-            self.send_item(Item::Other(p));
+            self.send_item(Item::Other(path, meta));
         }
     }
 
     fn send_item(&self, item: Item) {
         self.item_sender.send(Msg::Work(item)).unwrap();
     }
+}
+
+fn open_file(path: &Path) -> anyhow::Result<(File, Metadata)> {
+    let mut file = File::open(path)?;
+    let meta = Metadata::read(&mut file)?;
+    Ok((file, meta))
 }

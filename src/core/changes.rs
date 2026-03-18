@@ -6,9 +6,10 @@ use std::path::Path;
 use indexmap::IndexMap;
 
 use crate::fs::{fast_path_eq, valid_os_str, valid_os_str_dots};
+use crate::meta::FilePath;
 use crate::{
-    AudioFormat, Checks, CopyFileOp, CreateDirOp, DeleteFileOp, DirState, MoveFileOp, MusicIndex,
-    Song, SongOp, TranscodeFormat, TranscodeOp, util,
+    AudioFormat, Checks, CopyFileOp, CreateDirOp, DeleteFileOp, DirState, Metadata, MoveFileOp,
+    MusicIndex, Song, SongOp, TranscodeFormat, TranscodeOp, util,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -109,7 +110,7 @@ fn organize_diff(changes: &mut OrganizeChanges) {
     }
 
     for image in changes.index.images.iter() {
-        let current_dir = image.parent().unwrap();
+        let current_dir = image.path.parent().unwrap();
         let Some(release_dir) = release_dirs.get(current_dir.as_os_str()) else {
             continue;
         };
@@ -131,8 +132,8 @@ fn organize_diff(changes: &mut OrganizeChanges) {
             }
 
             if all_equal {
-                let new_path = new_song_dir.join(image.file_name().unwrap());
-                changes.move_ops.push(MoveFileOp { old_path: image, new_path });
+                let new_path = new_song_dir.join(image.path.file_name().unwrap());
+                changes.move_ops.push(MoveFileOp { old_path: &image.path, new_path });
             }
         }
     }
@@ -194,9 +195,9 @@ impl<'a> TranscodeChanges<'a> {
 fn transcode_diff(changes: &mut TranscodeChanges) {
     // Build lookup table for relative paths in the target directory.
     let mut target_files = IndexMap::new();
-    for full_path in changes.b.all_paths_iter() {
-        let sub_path = full_path.strip_prefix(changes.b.root).unwrap();
-        target_files.insert(sub_path, MarkedFile { full_path, marked: false });
+    for file in changes.b.all_files_iter() {
+        let sub_path = file.path.strip_prefix(changes.b.root).unwrap();
+        target_files.insert(sub_path, MarkedFile { file, marked: false });
     }
 
     // TODO: Generate dir Creations.
@@ -214,14 +215,14 @@ fn transcode_diff(changes: &mut TranscodeChanges) {
             let mut sub_path = sub_path.to_path_buf();
             sub_path.set_extension(format.extension());
 
-            if !try_mark_path(&mut target_files, &sub_path) {
+            if should_copy_or_transcode_song(&mut target_files, &sub_path, song.meta) {
                 let new_path = changes.b.root.join(sub_path);
                 create_parents(changes, &new_path);
                 changes.transcode_ops.push(TranscodeOp { song, new_path, format });
             }
         } else {
             // Don't transcode, only copy song.
-            if !try_mark_path(&mut target_files, sub_path) {
+            if should_copy_or_transcode_song(&mut target_files, sub_path, song.meta) {
                 let new_path = changes.b.root.join(sub_path);
                 create_parents(changes, &new_path);
                 changes.copy_ops.push(CopyFileOp { old_path: &song.path, new_path });
@@ -230,19 +231,19 @@ fn transcode_diff(changes: &mut TranscodeChanges) {
     }
 
     // Copy files.
-    for path in changes.a.non_song_paths_iter() {
-        let sub_path = path.strip_prefix(changes.a.root).unwrap();
-        if !try_mark_path(&mut target_files, sub_path) {
+    for file in changes.a.non_song_files_iter() {
+        let sub_path = file.path.strip_prefix(changes.a.root).unwrap();
+        if should_copy_or_transcode_song(&mut target_files, sub_path, file.meta) {
             let new_path = changes.b.root.join(sub_path);
             create_parents(changes, &new_path);
-            changes.copy_ops.push(CopyFileOp { old_path: path, new_path });
+            changes.copy_ops.push(CopyFileOp { old_path: file.path, new_path });
         }
     }
 
     // Delete files.
-    for file in target_files.values() {
-        if !file.marked {
-            changes.delete_ops.push(DeleteFileOp { path: file.full_path });
+    for target in target_files.values() {
+        if !target.marked {
+            changes.delete_ops.push(DeleteFileOp { path: target.file.path });
         }
     }
 }
@@ -270,15 +271,21 @@ fn create_parents(changes: &mut TranscodeChanges, new_path: &Path) {
 }
 
 struct MarkedFile<'a> {
-    full_path: &'a Path,
+    file: FilePath<&'a Path>,
     marked: bool,
 }
 
-fn try_mark_path(target_files: &mut IndexMap<&Path, MarkedFile<'_>>, path: &Path) -> bool {
-    if let Some(file) = target_files.get_mut(path) {
-        file.marked = true;
-        true
+fn should_copy_or_transcode_song(
+    target_files: &mut IndexMap<&Path, MarkedFile<'_>>,
+    sub_path: &Path,
+    meta: Metadata,
+) -> bool {
+    if let Some(target) = target_files.get_mut(sub_path) {
+        target.marked = true;
+
+        // Also replace file, if the file in the target directory is older.
+        meta.timestamp > target.file.meta.timestamp
     } else {
-        false
+        true
     }
 }
