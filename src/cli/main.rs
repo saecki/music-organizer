@@ -262,7 +262,7 @@ fn display_transcode_changes(changes: &TranscodeChanges, args: &TranscodeCommand
         }
     }
 
-    let num_dir_creations = changes.dir_creations.len();
+    let num_dir_creations = changes.dir_creations().count();
     let num_transcoded = changes.transcode_ops.len();
     let num_copied = changes.copy_ops.len();
     let num_deleted = changes.delete_ops.len();
@@ -302,7 +302,7 @@ fn display_transcoding(changes: &TranscodeChanges, args: &TranscodeCommand) {
     display_delete_file_ops(TITLE_TRANSCODING, &changes.delete_ops, verbose);
 
     if !verbose {
-        let num_dir_creations = changes.dir_creations.len();
+        let num_dir_creations = changes.dir_creations().count();
         let num_transcoded = changes.transcode_ops.len();
         let num_copied = changes.copy_ops.len();
         let num_deleted = changes.delete_ops.len();

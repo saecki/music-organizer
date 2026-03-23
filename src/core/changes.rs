@@ -158,7 +158,7 @@ pub struct TranscodeChanges<'a> {
     pub a: &'a MusicIndex<'a>,
     /// The index of the directory in which the transcoded songs should be placed.
     pub b: &'a MusicIndex<'a>,
-    pub dir_creations: IndexMap<CreateDirOp, DirState>,
+    dir_creations: IndexMap<CreateDirOp, DirState>,
     pub transcode_ops: Vec<TranscodeOp<'a>>,
     pub copy_ops: Vec<CopyFileOp<'a>>,
     pub delete_ops: Vec<DeleteFileOp<'a>>,
