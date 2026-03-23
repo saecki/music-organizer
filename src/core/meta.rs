@@ -28,7 +28,7 @@ impl<P: Ord> Ord for FilePath<P> {
 
 impl<P: Ord> PartialOrd for FilePath<P> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(&other))
+        Some(self.cmp(other))
     }
 }
 
@@ -88,6 +88,7 @@ pub struct Song {
 }
 
 impl Song {
+    #[allow(clippy::result_large_err)]
     pub fn try_from(
         path: PathBuf,
         format: AudioFormat,
