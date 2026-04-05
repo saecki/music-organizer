@@ -84,15 +84,15 @@ impl Tense {
 }
 
 pub fn song_op(music_dir: &Path, op: &SongOp, tense: Tense) -> impl Display {
-    display(move |f| format_song_op(f, music_dir, op, tense))
+    std::fmt::from_fn(move |f| format_song_op(f, music_dir, op, tense))
 }
 
 pub fn transcode_op(music_dir: &Path, op: &TranscodeOp, tense: Tense) -> impl Display {
-    display(move |f| format_transcode_op(f, music_dir, op, tense))
+    std::fmt::from_fn(move |f| format_transcode_op(f, music_dir, op, tense))
 }
 
 pub fn file_op(music_dir: &Path, op: &FileOp, tense: Tense) -> impl Display {
-    display(move |f| format_file_op(f, music_dir, op, tense))
+    std::fmt::from_fn(move |f| format_file_op(f, music_dir, op, tense))
 }
 
 pub fn copy_file_op<'a>(
@@ -101,7 +101,7 @@ pub fn copy_file_op<'a>(
     op: &'a CopyFileOp,
     tense: Tense,
 ) -> impl Display + use<'a> {
-    display(move |f| {
+    std::fmt::from_fn(move |f| {
         format_copy_file_op(f, music_dir, output_dir, op.old_path, &op.new_path, tense)
     })
 }
@@ -307,22 +307,4 @@ fn format_value<T>(
 #[track_caller]
 pub fn strip_dir<'a>(path: &'a Path, dir: &Path) -> std::path::Display<'a> {
     path.strip_prefix(dir).unwrap().display()
-}
-
-fn display<F>(fmt: F) -> impl Display
-where
-    F: Fn(&mut std::fmt::Formatter) -> std::fmt::Result,
-{
-    struct Wrapper<F>(F);
-
-    impl<F> Display for Wrapper<F>
-    where
-        F: Fn(&mut std::fmt::Formatter) -> std::fmt::Result,
-    {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            (self.0)(f)
-        }
-    }
-
-    Wrapper(fmt)
 }
