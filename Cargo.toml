@@ -35,8 +35,8 @@ opusmeta = "3.0"
 
 # Transcoding to opus
 symphonia = { version = "0.5.5", default-features = false, features = ["flac"] }
-rubato = { git = "https://github.com/HEnquist/rubato", rev = "fb96613" }
-audioadapter = "2.0.0"
-audioadapter-buffers = "2.0.0"
-audioadapter-sample = "2.0.0"
+rubato = "2.0.0"
+audioadapter = "3.0.0"
+audioadapter-buffers = "3.0.0"
+audioadapter-sample = "3.0.0"
 opusenc = { version = "0.3.1", features = ["encoder-options"] }
