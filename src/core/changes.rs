@@ -5,11 +5,11 @@ use std::path::Path;
 
 use indexmap::IndexMap;
 
-use crate::fs::{fast_path_eq, valid_os_str, valid_os_str_dots};
+use crate::fs::{FileOp, fast_path_eq, valid_os_str, valid_os_str_dots};
 use crate::meta::FilePath;
 use crate::{
-    AudioFormat, Checks, CopyFileOp, CreateDirOp, DeleteFileOp, DirState, Metadata, MoveFileOp,
-    MusicIndex, Song, SongOp, TranscodeFormat, TranscodeOp, util,
+    AudioFormat, Checks, CopyFileOp, CreateDirOp, DeleteFileOp, DirState, Metadata, MusicIndex,
+    Song, SongOp, TranscodeFormat, TranscodeOp, util,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -17,7 +17,7 @@ pub struct OrganizeChanges<'a> {
     pub index: &'a MusicIndex<'a>,
     dir_creations: IndexMap<CreateDirOp, DirState>,
     pub song_ops: IndexMap<*const Song, SongOp<'a>>,
-    pub move_ops: Vec<MoveFileOp<'a>>,
+    pub file_ops: IndexMap<*const Path, FileOp<'a>>,
 }
 
 impl<'a> OrganizeChanges<'a> {
@@ -25,8 +25,8 @@ impl<'a> OrganizeChanges<'a> {
         let mut changes = Self {
             index: checks.index,
             dir_creations: IndexMap::new(),
-            song_ops: checks.song_operations,
-            move_ops: Vec::new(),
+            song_ops: checks.song_ops,
+            file_ops: checks.file_ops,
         };
         organize_diff(&mut changes);
         changes
@@ -38,7 +38,7 @@ impl<'a> OrganizeChanges<'a> {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.dir_creations.is_empty() && self.song_ops.is_empty() && self.move_ops.is_empty()
+        self.dir_creations.is_empty() && self.song_ops.is_empty() && self.file_ops.is_empty()
     }
 
     fn new_song_path(&self, song: &'a Song) -> &Path {
@@ -133,7 +133,9 @@ fn organize_diff(changes: &mut OrganizeChanges) {
 
             if all_equal {
                 let new_path = new_song_dir.join(image.path.file_name().unwrap());
-                changes.move_ops.push(MoveFileOp { old_path: &image.path, new_path });
+                util::update_file_op(&mut changes.file_ops, &image.path, |op| {
+                    op.new_path = Some(new_path);
+                });
             }
         }
     }
@@ -146,7 +148,9 @@ fn organize_diff(changes: &mut OrganizeChanges) {
             let new_path = unknown_dir.join(unknown.path.file_name().unwrap());
 
             if new_path != unknown.path {
-                changes.move_ops.push(MoveFileOp { old_path: &unknown.path, new_path });
+                util::update_file_op(&mut changes.file_ops, &unknown.path, |op| {
+                    op.new_path = Some(new_path);
+                });
             }
         }
     }

@@ -1,7 +1,7 @@
 use clap::{CommandFactory, Parser};
 use indexmap::IndexMap;
 use music_organizer::{
-    Artists, Checks, Cleanup, CopyFileOp, CreateDirOp, DeleteDirOp, DeleteFileOp, Item, MoveFileOp,
+    Artists, Checks, Cleanup, CopyFileOp, CreateDirOp, DeleteDirOp, DeleteFileOp, FileOp, Item,
     MusicIndex, OrganizeChanges, Song, SongOp, TranscodeChanges, TranscodeOp, Value,
 };
 use std::fmt::Write as _;
@@ -476,10 +476,10 @@ fn display_organize_changes(changes: &OrganizeChanges, args: &OrganizeCommand) {
             }
             println!();
         }
-        if !changes.move_ops.is_empty() {
+        if !changes.file_ops.is_empty() {
             print_subtitle(SUBTITLE_OTHERS);
-            for (op, n) in changes.move_ops.iter().zip(1..) {
-                let op = display::move_file_op(&args.music_dir, op, Tense::SimPres);
+            for (op, n) in changes.file_ops.values().zip(1..) {
+                let op = display::file_op(&args.music_dir, op, Tense::SimPres);
                 println!("{ANSII_BLUE}{n}{ANSII_CLEAR} {op}",);
             }
             println!();
@@ -488,7 +488,7 @@ fn display_organize_changes(changes: &OrganizeChanges, args: &OrganizeCommand) {
 
     let num_dir_creations = changes.dir_creations().count();
     let num_song_ops = changes.song_ops.len();
-    let num_file_ops = changes.move_ops.len();
+    let num_file_ops = changes.file_ops.len();
 
     let dir_or_dirs = if num_dir_creations == 1 { "dir" } else { "dirs" };
     let song_or_songs = if num_file_ops == 1 { "song" } else { "songs" };
@@ -517,13 +517,13 @@ fn display_writing(changes: &OrganizeChanges, args: &OrganizeCommand) {
 
     display_create_dir_ops(TITLE_WRITING, changes.dir_creations(), verbose);
     display_song_operations(TITLE_WRITING, changes.index.root, &changes.song_ops, verbose);
-    display_move_file_ops(TITLE_WRITING, changes.index.root, &changes.move_ops, verbose);
+    display_file_operations(TITLE_WRITING, changes.index.root, &changes.file_ops, verbose);
 
     if !verbose {
         // TODO: This isn't quite accurate when song ops contain mode updates, or tag updates.
         let num_dir_creations = changes.dir_creations().count();
         let num_song_ops = changes.song_ops.len();
-        let num_file_ops = changes.move_ops.len();
+        let num_file_ops = changes.file_ops.len();
 
         let dir_or_dirs = if num_dir_creations == 1 { "dir" } else { "dirs" };
         let song_or_songs = if num_file_ops == 1 { "song" } else { "songs" };
@@ -664,15 +664,15 @@ fn display_transcode_operations(
     });
 }
 
-pub fn display_move_file_ops(
+pub fn display_file_operations(
     title: &str,
     music_dir: &Path,
-    file_ops: &[MoveFileOp],
+    file_ops: &IndexMap<*const Path, FileOp>,
     verbose: bool,
 ) {
-    for (op, n) in file_ops.iter().zip(1..) {
+    for (op, n) in file_ops.values().zip(1..) {
         let res = op.execute();
-        let op = display::move_file_op(music_dir, op, Tense::from_result(&res));
+        let op = display::file_op(music_dir, op, Tense::from_result(&res));
         match res {
             Ok(_) => {
                 print_op!(verbose, title, n, "{op}");

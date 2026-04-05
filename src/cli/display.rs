@@ -2,7 +2,7 @@ use std::fmt::Display;
 use std::path::Path;
 
 use music_organizer::{
-    AudioFormat, CopyFileOp, MoveFileOp, Song, SongOp, TagUpdate, TranscodeOp, Value,
+    AudioFormat, CopyFileOp, FileOp, Song, SongOp, TagUpdate, TranscodeOp, Value,
 };
 
 pub const ANSII_CLEAR: &str = "\x1b[0m";
@@ -72,6 +72,15 @@ impl Tense {
             PresProg => "transcoding",
         }
     }
+
+    pub const fn change(self) -> &'static str {
+        use Tense::*;
+        match self {
+            SimPres => "change",
+            SimPast => "changed",
+            PresProg => "changing",
+        }
+    }
 }
 
 pub fn song_op(music_dir: &Path, op: &SongOp, tense: Tense) -> impl Display {
@@ -82,12 +91,8 @@ pub fn transcode_op(music_dir: &Path, op: &TranscodeOp, tense: Tense) -> impl Di
     display(move |f| format_transcode_op(f, music_dir, op, tense))
 }
 
-pub fn move_file_op<'a>(
-    music_dir: &'a Path,
-    op: &'a MoveFileOp,
-    tense: Tense,
-) -> impl Display + use<'a> {
-    display(move |f| format_move_file_op(f, music_dir, op.old_path, &op.new_path, tense))
+pub fn file_op(music_dir: &Path, op: &FileOp, tense: Tense) -> impl Display {
+    display(move |f| format_file_op(f, music_dir, op, tense))
 }
 
 pub fn copy_file_op<'a>(
@@ -101,31 +106,27 @@ pub fn copy_file_op<'a>(
     })
 }
 
-/// TODO: proper mode formatting
 fn format_song_op(
     f: &mut impl std::fmt::Write,
     music_dir: &Path,
-    song_op: &music_organizer::SongOp,
+    song_op: &SongOp,
     tense: Tense,
 ) -> std::fmt::Result {
+    if let Some(new_path) = &song_op.new_path {
+        format_move_file_op(f, music_dir, &song_op.song.path, new_path, tense)?;
+    } else {
+        format_change_file_op(f, music_dir, &song_op.song.path, tense)?;
+    }
+
     if let Some(mode) = song_op.mode_update {
-        writeln!(f, "mode {mode} ")?;
+        write!(f, " mode {mode} ")?;
     }
-    match (&song_op.new_path, &song_op.tag_update) {
-        (Some(new_path), Some(tag_update)) => {
-            format_move_file_op(f, music_dir, &song_op.song.path, new_path, tense)?;
-            f.write_char('\n')?;
-            format_tag_update(f, song_op.song, tag_update)
-        }
-        (None, Some(tag_update)) => {
-            format_tag_update(f, song_op.song, tag_update)?;
-            write!(f, " {ANSII_GREEN}{}{ANSII_CLEAR}", strip_dir(&song_op.song.path, music_dir))
-        }
-        (Some(new_path), None) => {
-            format_move_file_op(f, music_dir, &song_op.song.path, new_path, tense)
-        }
-        (None, None) => Ok(()),
+    if let Some(update) = &song_op.tag_update {
+        writeln!(f)?;
+        format_tag_update(f, song_op.song, update)?;
     }
+
+    Ok(())
 }
 
 fn format_transcode_op(
@@ -141,6 +142,38 @@ fn format_transcode_op(
         f,
         "{operation} {ANSII_YELLOW}{old}{ANSII_CLEAR} to {ANSII_GREEN}{format}{ANSII_GREEN}"
     )?;
+    Ok(())
+}
+
+fn format_file_op(
+    f: &mut impl std::fmt::Write,
+    music_dir: &Path,
+    file_op: &music_organizer::FileOp,
+    tense: Tense,
+) -> std::fmt::Result {
+    if let Some(new_path) = &file_op.new_path {
+        format_move_file_op(f, music_dir, file_op.old_path, new_path, tense)?;
+    } else {
+        format_change_file_op(f, music_dir, file_op.old_path, tense)?;
+    }
+
+    if let Some(mode) = file_op.mode_update {
+        write!(f, " mode {mode} ")?;
+    }
+
+    Ok(())
+}
+
+fn format_change_file_op(
+    f: &mut impl std::fmt::Write,
+    music_dir: &Path,
+    old_path: &Path,
+    tense: Tense,
+) -> std::fmt::Result {
+    let operation = tense.change();
+    let old_sub_path = old_path.strip_prefix(music_dir).unwrap();
+    write!(f, "{operation} {ANSII_YELLOW}{}{ANSII_CLEAR}", old_sub_path.display())?;
+
     Ok(())
 }
 
@@ -207,10 +240,10 @@ fn format_u16(
     match (old, new) {
         (Some(old), Value::Update(new)) => write!(
             f,
-            "change {name}: {ANSII_YELLOW}{old}{ANSII_CLEAR} to {ANSII_GREEN}{new}{ANSII_CLEAR}"
+            "  change {name}: {ANSII_YELLOW}{old}{ANSII_CLEAR} to {ANSII_GREEN}{new}{ANSII_CLEAR}"
         )?,
-        (None, Value::Update(new)) => write!(f, "add {name}: {ANSII_GREEN}{new}{ANSII_CLEAR}")?,
-        (Some(old), Value::Remove) => write!(f, "remove {name}: {ANSII_RED}{old}{ANSII_CLEAR}")?,
+        (None, Value::Update(new)) => write!(f, "  add {name}: {ANSII_GREEN}{new}{ANSII_CLEAR}")?,
+        (Some(old), Value::Remove) => write!(f, "  remove {name}: {ANSII_RED}{old}{ANSII_CLEAR}")?,
         _ => return Ok(false),
     }
 
@@ -226,9 +259,9 @@ fn format_string(
     match new {
         Value::Update(new) => write!(
             f,
-            "change {name}: {ANSII_YELLOW}{old}{ANSII_CLEAR} to {ANSII_GREEN}{new}{ANSII_CLEAR}"
+            "  change {name}: {ANSII_YELLOW}{old}{ANSII_CLEAR} to {ANSII_GREEN}{new}{ANSII_CLEAR}"
         )?,
-        Value::Remove => write!(f, "remove {name}: {ANSII_RED}{old}{ANSII_CLEAR}")?,
+        Value::Remove => write!(f, "  remove {name}: {ANSII_RED}{old}{ANSII_CLEAR}")?,
         Value::Unchanged => return Ok(false),
     }
 
@@ -244,11 +277,11 @@ fn format_string_vec(
     match new {
         Value::Update(new) => write!(
             f,
-            "change {name}: {ANSII_YELLOW}{}{ANSII_CLEAR} to {ANSII_GREEN}{}{ANSII_CLEAR}",
+            "  change {name}: {ANSII_YELLOW}{}{ANSII_CLEAR} to {ANSII_GREEN}{}{ANSII_CLEAR}",
             old.join(", "),
             new.join(", ")
         )?,
-        Value::Remove => write!(f, "remove {name}: {ANSII_RED}{}{ANSII_CLEAR}", old.join(", "))?,
+        Value::Remove => write!(f, "  remove {name}: {ANSII_RED}{}{ANSII_CLEAR}", old.join(", "))?,
         Value::Unchanged => return Ok(false),
     }
 
@@ -262,9 +295,9 @@ fn format_value<T>(
     new: &Value<T>,
 ) -> Result<bool, std::fmt::Error> {
     match (old, new) {
-        (true, Value::Update(_)) => write!(f, "change {name}")?,
-        (false, Value::Update(_)) => write!(f, "add {name}")?,
-        (true, Value::Remove) => write!(f, "remove {name}")?,
+        (true, Value::Update(_)) => write!(f, "  change {name}")?,
+        (false, Value::Update(_)) => write!(f, "  add {name}")?,
+        (true, Value::Remove) => write!(f, "  remove {name}")?,
         _ => return Ok(false),
     }
 

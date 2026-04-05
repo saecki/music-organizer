@@ -3,6 +3,7 @@ use std::path::Path;
 
 use indexmap::IndexMap;
 
+use crate::fs::FileOp;
 use crate::{CreateDirOp, Song, SongOp, TagUpdate};
 
 /// Skip the more expensive path comparison.
@@ -29,19 +30,22 @@ pub fn create_dir_op(create_dir_ops: &mut IndexMap<CreateDirOp, DirState>, path:
     }
 }
 
+pub fn update_file_op<'a>(
+    file_operations: &mut IndexMap<*const Path, FileOp<'a>>,
+    file: &'a Path,
+    f: impl FnOnce(&mut FileOp),
+) {
+    let op = file_operations.entry(file as *const Path).or_insert_with(|| FileOp::new(file));
+    f(op);
+}
+
 pub fn update_song_op<'a>(
     song_operations: &mut IndexMap<*const Song, SongOp<'a>>,
     song: &'a Song,
     f: impl FnOnce(&mut SongOp),
 ) {
-    match song_operations.get_mut(&(song as *const Song)) {
-        Some(o) => f(o),
-        None => {
-            let mut o = SongOp::new(song);
-            f(&mut o);
-            song_operations.insert(song, o);
-        }
-    }
+    let op = song_operations.entry(song as *const Song).or_insert_with(|| SongOp::new(song));
+    f(op);
 }
 
 pub fn update_tag<'a>(

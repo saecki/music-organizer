@@ -1,5 +1,8 @@
+use std::path::Path;
+
 use indexmap::IndexMap;
 
+use crate::fs::FileOp;
 use crate::{MusicIndex, Song, SongOp, Value, util};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -17,13 +20,19 @@ pub struct Album<'a> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Checks<'a> {
     pub index: &'a MusicIndex<'a>,
-    pub song_operations: IndexMap<*const Song, SongOp<'a>>,
+    pub song_ops: IndexMap<*const Song, SongOp<'a>>,
+    pub file_ops: IndexMap<*const Path, FileOp<'a>>,
     pub artists: Vec<Artists<'a>>,
 }
 
 impl<'a> Checks<'a> {
     pub fn new(index: &'a MusicIndex<'a>) -> Self {
-        let mut new = Self { index, song_operations: IndexMap::new(), artists: Vec::new() };
+        let mut new = Self {
+            index,
+            song_ops: IndexMap::new(),
+            file_ops: IndexMap::new(),
+            artists: Vec::new(),
+        };
         new.update_index();
         new
     }
@@ -77,15 +86,22 @@ impl<'a> Checks<'a> {
                 }
             }
 
-            util::update_tag(&mut self.song_operations, song, |t| t.artwork = Value::Remove);
+            util::update_tag(&mut self.song_ops, song, |t| t.artwork = Value::Remove);
         }
     }
 
     pub fn check_file_permissions(&mut self) {
         for song in self.index.songs.iter() {
             if song.meta.mode.permissions() != 0o755 {
-                util::update_song_op(&mut self.song_operations, song, |op| {
+                util::update_song_op(&mut self.song_ops, song, |op| {
                     op.mode_update = Some(song.meta.mode.with_permissions(0o755));
+                });
+            }
+        }
+        for file in self.index.non_song_files_iter() {
+            if file.meta.mode.permissions() != 0o755 {
+                util::update_file_op(&mut self.file_ops, file.path, |op| {
+                    op.mode_update = Some(file.meta.mode.with_permissions(0o755));
                 });
             }
         }
@@ -112,7 +128,7 @@ impl<'a> Checks<'a> {
                         if ar1.names != names {
                             for rl in ar1.releases.iter() {
                                 for song in rl.songs.iter() {
-                                    util::update_tag(&mut self.song_operations, song, |tu| {
+                                    util::update_tag(&mut self.song_ops, song, |tu| {
                                         tu.release_artists = Value::Update(names.clone())
                                     });
                                 }
@@ -122,7 +138,7 @@ impl<'a> Checks<'a> {
                         if ar2.names != names {
                             for rl in ar2.releases.iter() {
                                 for song in rl.songs.iter() {
-                                    util::update_tag(&mut self.song_operations, song, |tu| {
+                                    util::update_tag(&mut self.song_ops, song, |tu| {
                                         tu.release_artists = Value::Update(names.clone())
                                     });
                                 }
@@ -132,7 +148,7 @@ impl<'a> Checks<'a> {
                     Value::Remove => {
                         for rl in ar1.releases.iter() {
                             for song in rl.songs.iter() {
-                                util::update_tag(&mut self.song_operations, song, |tu| {
+                                util::update_tag(&mut self.song_ops, song, |tu| {
                                     tu.release_artists = Value::Remove
                                 });
                             }
@@ -140,7 +156,7 @@ impl<'a> Checks<'a> {
 
                         for rl in ar2.releases.iter() {
                             for song in rl.songs.iter() {
-                                util::update_tag(&mut self.song_operations, song, |tu| {
+                                util::update_tag(&mut self.song_ops, song, |tu| {
                                     tu.release_artists = Value::Remove
                                 });
                             }

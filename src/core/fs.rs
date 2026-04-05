@@ -65,16 +65,31 @@ impl<'a> SongOp<'a> {
     }
 }
 
-/// Move a file.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MoveFileOp<'a> {
+pub struct FileOp<'a> {
     pub old_path: &'a Path,
-    pub new_path: PathBuf,
+    pub mode_update: Option<Mode>,
+    pub new_path: Option<PathBuf>,
 }
 
-impl MoveFileOp<'_> {
+impl<'a> FileOp<'a> {
+    pub fn new(file: &'a Path) -> Self {
+        Self { old_path: file, mode_update: None, new_path: None }
+    }
+
     pub fn execute(&self) -> anyhow::Result<()> {
-        std::fs::rename(self.old_path, &self.new_path)?;
+        let path = match &self.new_path {
+            Some(new) => {
+                std::fs::rename(self.old_path, new)?;
+                new
+            }
+            None => self.old_path,
+        };
+
+        if let Some(mode) = &self.mode_update {
+            mode.write(path)?;
+        }
+
         Ok(())
     }
 }
