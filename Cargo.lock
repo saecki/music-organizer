@@ -649,8 +649,9 @@ dependencies = [
 
 [[package]]
 name = "opusmeta"
-version = "2.0.1"
-source = "git+https://github.com/karx1/opusmeta?rev=54ea8e9#54ea8e92833a3cc564b694bc8d50a9107aecc4fd"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5075f0b7ed926ab3c1d79c025cc50018c079f79eb96bb12dc63fc15e93074a4"
 dependencies = [
  "base64",
  "infer",
