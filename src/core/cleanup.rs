@@ -59,12 +59,11 @@ impl Cleanup<'_> {
             }
         }
 
-        for dir in dirs.into_iter() {
-            let dir = dir.unwrap();
-            if dir.empty {
-                self.dir_deletions.push(DeleteDirOp { path: dir.path });
-            }
-        }
+        // Never delete the music root directory.
+        self.dir_deletions.extend(dirs.into_iter().skip(1).filter_map(|dir| {
+            let dir = dir?;
+            dir.empty.then_some(DeleteDirOp { path: dir.path })
+        }));
     }
 
     pub fn is_empty(&self) -> bool {
