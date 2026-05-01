@@ -1,3 +1,4 @@
+use std::ffi::OsStr;
 use std::path::Path;
 
 use indexmap::IndexMap;
@@ -99,6 +100,13 @@ impl<'a> Checks<'a> {
             }
         }
         for file in self.index.non_song_files_iter() {
+            // Skip hidden files
+            if let Some(name) = file.path.file_name().and_then(OsStr::to_str)
+                && name.starts_with(".")
+            {
+                continue;
+            }
+
             if file.meta.mode.permissions() != 0o755 {
                 util::update_file_op(&mut self.file_ops, file.path, |op| {
                     op.mode_update = Some(file.meta.mode.with_permissions(0o755));
