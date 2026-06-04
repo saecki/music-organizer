@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::fmt::{Display, Write as _};
 use std::path::Path;
 
 use music_organizer::{
@@ -80,6 +80,43 @@ impl Tense {
             SimPast => "changed",
             PresProg => "changing",
         }
+    }
+}
+
+pub struct Stats<'a, 'b> {
+    f: &'a mut std::fmt::Formatter<'b>,
+    verbose: bool,
+    first: bool,
+}
+
+pub fn stats(verbose: bool, write: impl Fn(&mut Stats) -> std::fmt::Result) -> impl Display {
+    std::fmt::from_fn(move |f| {
+        let mut stats = Stats { f, verbose, first: true };
+        write(&mut stats)?;
+        Ok(())
+    })
+}
+
+impl Stats<'_, '_> {
+    pub fn stat(
+        &mut self,
+        num: usize,
+        write: impl Fn(&mut std::fmt::Formatter) -> std::fmt::Result,
+    ) -> std::fmt::Result {
+        if num == 0 {
+            return Ok(());
+        }
+
+        if !self.first {
+            let sep = if self.verbose { '\n' } else { ' ' };
+            self.f.write_char(sep)?;
+        }
+        write!(self.f, "{ANSII_BLUE}{num}{ANSII_CLEAR} ")?;
+        write(self.f)?;
+
+        self.first = false;
+
+        Ok(())
     }
 }
 

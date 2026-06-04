@@ -268,19 +268,26 @@ fn display_transcode_changes(changes: &TranscodeChanges, args: &TranscodeCommand
     let num_deleted = changes.delete_ops.len();
 
     let dir_or_dirs = if num_dir_creations == 1 { "dir" } else { "dirs" };
-    let song_or_songs = if num_dir_creations == 1 { "song" } else { "songs" };
-    let copied_file_or_files = if num_dir_creations == 1 { "file" } else { "files" };
-    let deleted_file_or_files = if num_dir_creations == 1 { "file" } else { "files" };
+    let song_or_songs = if num_transcoded == 1 { "song" } else { "songs" };
+    let copied_file_or_files = if num_copied == 1 { "file" } else { "files" };
+    let deleted_file_or_files = if num_deleted == 1 { "file" } else { "files" };
 
-    let sep = if verbose { '\n' } else { ' ' };
-    print_verbose!(
-        verbose,
-        TITLE_TRANSCODING,
-        "{ANSII_BLUE}{num_dir_creations}{ANSII_CLEAR} {dir_or_dirs} will be {ANSII_GREEN}created{sep}\
-         {ANSII_BLUE}{num_transcoded}{ANSII_CLEAR} {song_or_songs} will be {ANSII_GREEN}transcoded{sep}\
-         {ANSII_BLUE}{num_copied}{ANSII_CLEAR} {copied_file_or_files} will be {ANSII_GREEN}copied{sep}\
-         {ANSII_BLUE}{num_deleted}{ANSII_CLEAR} {deleted_file_or_files} will be {ANSII_RED}deleted{ANSII_CLEAR}",
-    );
+    let stats = display::stats(verbose, |stats| {
+        stats.stat(num_dir_creations, |f| {
+            write!(f, "{dir_or_dirs} will be {ANSII_GREEN}created{ANSII_CLEAR}")
+        })?;
+        stats.stat(num_transcoded, |f| {
+            write!(f, "{song_or_songs} will be {ANSII_GREEN}transcoded{ANSII_CLEAR}")
+        })?;
+        stats.stat(num_copied, |f| {
+            write!(f, "{copied_file_or_files} will be {ANSII_GREEN}copied{ANSII_CLEAR}")
+        })?;
+        stats.stat(num_deleted, |f| {
+            write!(f, "{deleted_file_or_files} will be {ANSII_RED}deleted{ANSII_CLEAR}")
+        })?;
+        Ok(())
+    });
+    print_verbose!(verbose, TITLE_TRANSCODING, "{stats}");
 
     println!();
 }
@@ -308,19 +315,26 @@ fn display_transcoding(changes: &TranscodeChanges, args: &TranscodeCommand) {
         let num_deleted = changes.delete_ops.len();
 
         let dir_or_dirs = if num_dir_creations == 1 { "dir" } else { "dirs" };
-        let song_or_songs = if num_dir_creations == 1 { "song" } else { "songs" };
-        let copied_file_or_files = if num_dir_creations == 1 { "file" } else { "files" };
-        let deleted_file_or_files = if num_dir_creations == 1 { "file" } else { "files" };
+        let song_or_songs = if num_transcoded == 1 { "song" } else { "songs" };
+        let copied_file_or_files = if num_copied == 1 { "file" } else { "files" };
+        let deleted_file_or_files = if num_deleted == 1 { "file" } else { "files" };
 
-        let sep = if verbose { '\n' } else { ' ' };
-        print_verbose!(
-            verbose,
-            TITLE_TRANSCODING,
-            "{ANSII_BLUE}{num_dir_creations}{ANSII_CLEAR} {dir_or_dirs} {ANSII_GREEN}created{sep}\
-             {ANSII_BLUE}{num_transcoded}{ANSII_CLEAR} {song_or_songs} {ANSII_GREEN}transcoded{sep}\
-             {ANSII_BLUE}{num_copied}{ANSII_CLEAR} {copied_file_or_files} {ANSII_GREEN}copied{sep}\
-             {ANSII_BLUE}{num_deleted}{ANSII_CLEAR} {deleted_file_or_files} {ANSII_RED}deleted{ANSII_CLEAR}",
-        );
+        let stats = display::stats(verbose, |stats| {
+            stats.stat(num_dir_creations, |f| {
+                write!(f, "{dir_or_dirs} {ANSII_GREEN}created{ANSII_CLEAR}")
+            })?;
+            stats.stat(num_transcoded, |f| {
+                write!(f, "{song_or_songs} {ANSII_GREEN}transcoded{ANSII_CLEAR}")
+            })?;
+            stats.stat(num_copied, |f| {
+                write!(f, "{copied_file_or_files} {ANSII_GREEN}copied{ANSII_CLEAR}")
+            })?;
+            stats.stat(num_deleted, |f| {
+                write!(f, "{deleted_file_or_files} {ANSII_RED}deleted{ANSII_CLEAR}")
+            })?;
+            Ok(())
+        });
+        print_verbose!(verbose, TITLE_TRANSCODING, "{stats}");
     }
 
     println!();
@@ -491,17 +505,22 @@ fn display_organize_changes(changes: &OrganizeChanges, args: &OrganizeCommand) {
     let num_file_ops = changes.file_ops.len();
 
     let dir_or_dirs = if num_dir_creations == 1 { "dir" } else { "dirs" };
-    let song_or_songs = if num_file_ops == 1 { "song" } else { "songs" };
+    let song_or_songs = if num_song_ops == 1 { "song" } else { "songs" };
     let file_or_files = if num_file_ops == 1 { "file" } else { "files" };
 
-    let sep = if verbose { '\n' } else { ' ' };
-    print_verbose!(
-        verbose,
-        TITLE_CHANGES,
-        "{ANSII_BLUE}{num_dir_creations}{ANSII_CLEAR} {dir_or_dirs} will be {ANSII_GREEN}created{sep}\
-         {ANSII_BLUE}{num_song_ops}{ANSII_CLEAR} {song_or_songs} will be {ANSII_GREEN}moved{sep}\
-         {ANSII_BLUE}{num_file_ops}{ANSII_CLEAR} {file_or_files} will be {ANSII_GREEN}moved{ANSII_CLEAR}",
-    );
+    let stats = display::stats(verbose, |stats| {
+        stats.stat(num_dir_creations, |f| {
+            write!(f, "{dir_or_dirs} will be {ANSII_GREEN}created{ANSII_CLEAR}")
+        })?;
+        stats.stat(num_song_ops, |f| {
+            write!(f, "{song_or_songs} will be {ANSII_GREEN}moved{ANSII_CLEAR}")
+        })?;
+        stats.stat(num_file_ops, |f| {
+            write!(f, "{file_or_files} will be {ANSII_GREEN}moved{ANSII_CLEAR}")
+        })?;
+        Ok(())
+    });
+    print_verbose!(verbose, TITLE_CHANGES, "{stats}");
 
     println!();
 }
@@ -526,17 +545,22 @@ fn display_writing(changes: &OrganizeChanges, args: &OrganizeCommand) {
         let num_file_ops = changes.file_ops.len();
 
         let dir_or_dirs = if num_dir_creations == 1 { "dir" } else { "dirs" };
-        let song_or_songs = if num_file_ops == 1 { "song" } else { "songs" };
+        let song_or_songs = if num_song_ops == 1 { "song" } else { "songs" };
         let file_or_files = if num_file_ops == 1 { "file" } else { "files" };
 
-        let sep = if verbose { '\n' } else { ' ' };
-        print_verbose!(
-            verbose,
-            TITLE_CHANGES,
-            "{ANSII_BLUE}{num_dir_creations}{ANSII_CLEAR} {dir_or_dirs} {ANSII_GREEN}created{sep}\
-             {ANSII_BLUE}{num_song_ops}{ANSII_CLEAR} {song_or_songs} {ANSII_GREEN}moved{sep}\
-             {ANSII_BLUE}{num_file_ops}{ANSII_CLEAR} {file_or_files} {ANSII_GREEN}moved{ANSII_CLEAR}",
-        );
+        let stats = display::stats(verbose, |stats| {
+            stats.stat(num_dir_creations, |f| {
+                write!(f, "{dir_or_dirs} {ANSII_GREEN}created{ANSII_CLEAR}")
+            })?;
+            stats.stat(num_song_ops, |f| {
+                write!(f, "{song_or_songs} {ANSII_GREEN}moved{ANSII_CLEAR}")
+            })?;
+            stats.stat(num_file_ops, |f| {
+                write!(f, "{file_or_files} {ANSII_GREEN}moved{ANSII_CLEAR}")
+            })?;
+            Ok(())
+        });
+        print_verbose!(verbose, TITLE_WRITING, "{stats}");
     }
 
     println!();
